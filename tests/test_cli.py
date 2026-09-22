@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from src.cli import DEFAULT_NEGATIVE, build_parser, main, reserve_output_dir
+from src.cli import build_parser, main, reserve_output_dir
 from src.entropy import MIN_ENTROPY_BITS
 from src.model import REQUIRED_FILES, model_is_ready
 from src.progress import render_bar
@@ -27,7 +27,10 @@ def high_entropy_text() -> str:
 
 @pytest.fixture
 def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    calls: list[dict] = []
+    class Calls(list):
+        out: str | None = None
+
+    calls = Calls()
 
     def render(jobs, *, width, height, steps, negative_prompt):
         calls.append(
@@ -42,8 +45,18 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         )
 
     monkeypatch.setattr("src.prompt.load_fragments", lambda: TestFragments())
+    monkeypatch.setattr(
+        "src.cli.choose_negative",
+        lambda: "text letters label title panels comics captions subtitle",
+    )
     monkeypatch.setattr("src.cli.render_cards", render)
-    monkeypatch.setattr("src.cli.reserve_output_dir", lambda: tmp_path)
+    calls.out = None
+
+    def reserve(*_args, **kwargs):
+        calls.out = kwargs.get("name")
+        return tmp_path
+
+    monkeypatch.setattr("src.cli.reserve_output_dir", reserve)
     return calls
 
 
@@ -55,8 +68,8 @@ def test_defaults() -> None:
     assert args.width == 512
     assert args.height == 1024
     assert args.steps == 25
-    assert args.negative == DEFAULT_NEGATIVE
-    assert args.negative == "text letters label title panels comics captions subtitle"
+    assert args.out is None
+    assert not hasattr(args, "negative")
 
 
 def test_short_seed_is_refused(fake_render, capsys: pytest.CaptureFixture[str]) -> None:
@@ -80,7 +93,7 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["width"] == 512
     assert call["height"] == 1024
     assert call["steps"] == 25
-    assert call["negative_prompt"] == DEFAULT_NEGATIVE
+    assert call["negative_prompt"] == "text letters label title panels comics captions subtitle"
     captured = capsys.readouterr()
     assert captured.out.strip() == str(tmp_path)
     assert captured.err == ""
@@ -98,8 +111,8 @@ def test_flags_override_defaults(fake_render) -> None:
             "768",
             "--steps",
             "10",
-            "--negative",
-            "blurry",
+            "--out",
+            "reading",
         ]
     )
 
@@ -108,7 +121,18 @@ def test_flags_override_defaults(fake_render) -> None:
     assert call["width"] == 768
     assert call["height"] == 768
     assert call["steps"] == 10
-    assert call["negative_prompt"] == "blurry"
+    assert call["negative_prompt"] == "text letters label title panels comics captions subtitle"
+    assert fake_render.out == "reading"
+
+
+def test_out_must_be_a_folder_name() -> None:
+    with pytest.raises(SystemExit):
+        main([str(1 << 255), "--out", "nested/name"])
+
+
+def test_negative_flag_is_rejected() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--negative", "blurry"])
 
 
 def test_missing_seed_reads_tty(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,9 +167,13 @@ def test_output_directory_name(tmp_path) -> None:
     first = reserve_output_dir(moment, tmp_path)
     second = reserve_output_dir(moment, tmp_path)
 
-    assert first.name == "2026-09-22-16-50-07"
-    assert second.name == "2026-09-22-16-50-07-2"
-    assert first.is_dir() and second.is_dir()
+    assert first.name == "2026-09-22-165007"
+    assert second.name == "2026-09-22-165007-2"
+    named = reserve_output_dir(name="reading", root=tmp_path)
+    again = reserve_output_dir(name="reading", root=tmp_path)
+    assert named.name == "reading"
+    assert again.name == "reading-2"
+    assert first.is_dir() and named.is_dir() and again.is_dir()
 
 
 def test_dimensions_must_be_multiples_of_eight() -> None:

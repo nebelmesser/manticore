@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import math
+import random
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
 
-from src.paths import LEXICON
+from src.paths import NEGATIVE, POSITIVE
 
 
 INDEX_BITS = 17
@@ -29,7 +30,7 @@ class GeneratedPrompt:
 
 
 @lru_cache(maxsize=1)
-def load_fragments(path: Path = LEXICON) -> tuple[str, ...]:
+def load_fragments(path: Path = POSITIVE) -> tuple[str, ...]:
     if not path.is_file():
         raise LexiconError(f"Prompt corpus not found: {path}")
 
@@ -43,6 +44,26 @@ def load_fragments(path: Path = LEXICON) -> tuple[str, ...]:
     if len(set(fragments)) != FRAGMENT_COUNT:
         raise LexiconError(f"Corpus fragments are not unique: {path}")
     return fragments
+
+
+def load_negatives(path: Path = NEGATIVE) -> tuple[str, ...]:
+    if not path.is_file():
+        raise LexiconError(f"Negative corpus not found: {path}")
+
+    lines = tuple(line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+    lines = tuple(line for line in lines if line)
+    if not lines:
+        raise LexiconError(f"Negative corpus is empty: {path}")
+    return lines
+
+
+def choose_negative(path: Path = NEGATIVE) -> str:
+    """Use the only negative line, or one line at random when there are several."""
+
+    lines = load_negatives(path)
+    if len(lines) == 1:
+        return lines[0]
+    return random.choice(lines)
 
 
 def seed_digest(seed: int | str) -> bytes:

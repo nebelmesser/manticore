@@ -14,11 +14,8 @@ from src.entropy import (
     require_entropy,
 )
 from src.paths import OUTPUTS_DIR
-from src.prompt import GeneratedPrompt, LexiconError, generate_prompt
+from src.prompt import GeneratedPrompt, LexiconError, choose_negative, generate_prompt
 from src.seeds import parse_seed, sequence_seed
-
-
-DEFAULT_NEGATIVE = "text letters label title panels comics captions subtitle"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--width", type=int, default=512, help="width, a multiple of 8")
     parser.add_argument("--height", type=int, default=1024, help="height, a multiple of 8")
     parser.add_argument("--steps", type=int, default=25, help="denoising steps")
-    parser.add_argument("--negative", default=DEFAULT_NEGATIVE, help="negative prompt")
+    parser.add_argument(
+        "--out",
+        help="output folder name under outputs/; a timestamp is used when omitted",
+    )
     return parser
 
 
@@ -49,10 +49,16 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         value = getattr(args, name)
         if value <= 0 or value % 8:
             parser.error(f"--{name} must be a positive multiple of 8")
+    if args.out is not None and (args.out in {"", ".", ".."} or "/" in args.out or "\\" in args.out):
+        parser.error("--out must be a folder name")
 
 
-def reserve_output_dir(moment: datetime | None = None, root: Path = OUTPUTS_DIR) -> Path:
-    stamp = (moment or datetime.now()).strftime("%Y-%m-%d-%H-%M-%S")
+def reserve_output_dir(
+    moment: datetime | None = None,
+    root: Path = OUTPUTS_DIR,
+    name: str | None = None,
+) -> Path:
+    stamp = name if name is not None else (moment or datetime.now()).strftime("%Y-%m-%d-%H%M%S")
     candidate = root / stamp
     suffix = 2
     while candidate.exists():
@@ -115,11 +121,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     seed = read_seed(args.seed)
     try:
         cards = cards_for(seed, args.count)
+        negative_prompt = choose_negative()
     except LexiconError as error:
         print(f"scry: {error}", file=sys.stderr)
         raise SystemExit(2) from error
 
-    output_dir = reserve_output_dir()
+    output_dir = reserve_output_dir(name=args.out)
     jobs = [
         (card, output_dir / card_filename(index, args.count))
         for index, card in enumerate(cards, start=1)
@@ -129,6 +136,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         width=args.width,
         height=args.height,
         steps=args.steps,
-        negative_prompt=args.negative,
+        negative_prompt=negative_prompt,
     )
     print(output_dir)

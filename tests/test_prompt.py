@@ -9,6 +9,8 @@ from src.prompt import (
     FRAGMENTS_PER_PROMPT,
     INDEX_BITS,
     PROMPT_ENTROPY_BITS,
+    LexiconError,
+    choose_negative,
     estimate_seed_entropy,
     generate_prompt,
     prompt_indices,
@@ -37,6 +39,30 @@ TEST_FRAGMENTS = TestFragments()
 @pytest.fixture(autouse=True)
 def use_test_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("src.prompt.load_fragments", lambda: TEST_FRAGMENTS)
+
+
+def test_single_negative_line_is_always_chosen(tmp_path) -> None:
+    path = tmp_path / "negative.txt"
+    path.write_text("blurry watermark\n", encoding="utf-8")
+
+    assert choose_negative(path) == "blurry watermark"
+    assert choose_negative(path) == "blurry watermark"
+
+
+def test_several_negative_lines_choose_one_at_random(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "negative.txt"
+    path.write_text("blurry\nwatermark\ntext\n", encoding="utf-8")
+    monkeypatch.setattr("src.prompt.random.choice", lambda lines: lines[1])
+
+    assert choose_negative(path) == "watermark"
+
+
+def test_empty_negative_corpus_is_refused(tmp_path) -> None:
+    path = tmp_path / "negative.txt"
+    path.write_text("\n\n", encoding="utf-8")
+
+    with pytest.raises(LexiconError):
+        choose_negative(path)
 
 
 def test_same_seed_produces_same_prompt() -> None:
