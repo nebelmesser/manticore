@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+venv_python="$root/.venv/bin/python"
+
+base_python() {
+  if [[ -x /opt/homebrew/bin/python3.12 ]]; then
+    echo /opt/homebrew/bin/python3.12
+    return
+  fi
+  if command -v python3.12 >/dev/null 2>&1; then
+    command -v python3.12
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return
+  fi
+  echo "Python 3 not found." >&2
+  exit 1
+}
+
+if [[ ! -x "$venv_python" ]] || ! "$venv_python" -c "import torch, diffusers, PIL, huggingface_hub" >/dev/null 2>&1; then
+  if [[ ! -x "$venv_python" ]]; then
+    "$(base_python)" -m venv "$root/.venv"
+  fi
+  PIP_DISABLE_PIP_VERSION_CHECK=1 "$root/.venv/bin/python" -m pip install --upgrade pip
+  PIP_DISABLE_PIP_VERSION_CHECK=1 "$root/.venv/bin/python" -m pip install -r "$root/requirements.txt"
+fi
+
+export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
+export DIFFUSERS_VERBOSITY=error
+export TRANSFORMERS_VERBOSITY=error
+export TOKENIZERS_PARALLELISM=false
+exec "$venv_python" -m src "$@"
