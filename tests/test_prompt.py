@@ -16,11 +16,10 @@ from src.prompt import (
     prompt_indices,
 )
 from src.seeds import (
-    BATCH_SEED_BITS,
+    SD_SEED_BITS,
     TORCH_MAX_SEED,
+    card_parts,
     parse_seed,
-    sequence_seed,
-    source_entropy_chunk,
     to_sd_seed,
 )
 
@@ -105,31 +104,33 @@ def test_decimal_seed_remains_numeric() -> None:
     assert parse_seed("0042") == "0042"
 
 
-def test_batch_seed_sequence_is_reproducible_and_wide() -> None:
-    seeds = [sequence_seed("omen", offset) for offset in range(3)]
+def test_card_parts_are_reproducible() -> None:
+    first = [card_parts("omen", offset) for offset in range(3)]
 
-    assert seeds[0] == "omen"
-    assert seeds == [sequence_seed("omen", offset) for offset in range(3)]
-    assert len(set(seeds)) == 3
-    assert all(isinstance(seed, int) for seed in seeds[1:])
-    assert all(0 <= seed < 2**BATCH_SEED_BITS for seed in seeds[1:])
-    assert any(seed.bit_length() > 256 for seed in seeds[1:])
+    assert first == [card_parts("omen", offset) for offset in range(3)]
+    assert len(set(first)) == 3
+    assert all(0 <= sd_seed < 2**SD_SEED_BITS for _prompt_seed, sd_seed in first)
 
 
-def test_surplus_entropy_flows_into_following_cards() -> None:
-    seed = (1 << 600) - 1
+def test_surplus_flows_from_prompt_into_seed_then_onward() -> None:
+    prompt_only = (1 << PROMPT_ENTROPY_BITS) - 1
+    image_seed = 0xABC
+    first_prompt, first_sd = card_parts(prompt_only, 0)
+    wider = (prompt_only << SD_SEED_BITS) | image_seed
+    poured_prompt, poured_sd = card_parts(wider, 0)
+    next_prompt_bits = (1 << PROMPT_ENTROPY_BITS) - 1
+    with_next_prompt = (wider << PROMPT_ENTROPY_BITS) | next_prompt_bits
+    second_prompt, second_sd = card_parts(with_next_prompt, 1)
+    third_prompt, _third_sd = card_parts(with_next_prompt, 2)
 
-    second_chunk, second_bits = source_entropy_chunk(seed, 1)
-    third_chunk, third_bits = source_entropy_chunk(seed, 2)
-    second_seed = sequence_seed(seed, 1)
-    third_seed = sequence_seed(seed, 2)
-
-    assert second_bits == PROMPT_ENTROPY_BITS
-    assert second_chunk == 2**PROMPT_ENTROPY_BITS - 1
-    assert second_seed >> (BATCH_SEED_BITS - second_bits) == second_chunk
-    assert third_bits == 56
-    assert third_chunk == 2**56 - 1
-    assert third_seed >> (BATCH_SEED_BITS - third_bits) == third_chunk
+    assert first_prompt == prompt_only
+    assert poured_prompt == prompt_only
+    assert poured_sd == image_seed
+    assert poured_sd != to_sd_seed(poured_prompt)
+    assert second_prompt == next_prompt_bits
+    assert second_sd != poured_sd
+    assert third_prompt != second_prompt
+    assert generate_prompt(poured_prompt).prompt == generate_prompt(first_prompt).prompt
 
 
 def test_large_seed_is_deterministically_mapped_for_sd() -> None:

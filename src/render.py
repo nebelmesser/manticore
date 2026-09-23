@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import warnings
 from pathlib import Path
 from typing import Sequence, TextIO
 
 from src.cards import TRIAD, frame_card
+from src.entropy import format_input_entropy
 from src.model import ensure_model
 from src.paths import MODEL_DIR
 from src.progress import ProgressBar
 from src.prompt import GeneratedPrompt
-from src.seeds import to_sd_seed
 
 
 GUIDANCE_SCALE = 7.5
@@ -110,6 +111,7 @@ def render_cards(
     height: int,
     steps: int,
     negative_prompt: str,
+    entropy_bits: float,
     model_dir: Path = MODEL_DIR,
     progress: TextIO | None = None,
 ) -> None:
@@ -117,13 +119,16 @@ def render_cards(
 
     ensure_model(model_dir)
     _quiet_libraries()
-    bar = ProgressBar(len(jobs) * steps, progress)
+    stream = progress if progress is not None else sys.stderr
+    stream.write(format_input_entropy(entropy_bits))
+    stream.flush()
+    bar = ProgressBar(len(jobs) * steps, stream)
     pipe = None
     device = "cpu"
     try:
         pipe, device = _load_pipeline(model_dir)
         for image_index, (card, path) in enumerate(jobs):
-            sd_seed = to_sd_seed(card.seed)
+            sd_seed = card.sd_seed
             generator = torch.Generator(device="cpu").manual_seed(sd_seed)
 
             def on_step(_pipe, step, _timestep, callback_kwargs, image_index=image_index):

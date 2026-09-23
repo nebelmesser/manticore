@@ -27,6 +27,7 @@ class GeneratedPrompt:
     seed: int | str
     seed_entropy_bits: float
     prompt: str
+    sd_seed: int = 0
 
 
 @lru_cache(maxsize=1)

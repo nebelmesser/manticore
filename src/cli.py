@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence, TextIO
@@ -14,8 +15,14 @@ from src.entropy import (
     require_entropy,
 )
 from src.paths import OUTPUTS_DIR
-from src.prompt import GeneratedPrompt, LexiconError, choose_negative, generate_prompt
-from src.seeds import parse_seed, sequence_seed
+from src.prompt import (
+    GeneratedPrompt,
+    LexiconError,
+    choose_negative,
+    estimate_seed_entropy,
+    generate_prompt,
+)
+from src.seeds import card_parts, parse_seed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -92,7 +99,11 @@ def read_seed(
 
 
 def cards_for(seed: int | str, count: int) -> list[GeneratedPrompt]:
-    return [generate_prompt(sequence_seed(seed, offset)) for offset in range(count)]
+    cards = []
+    for offset in range(count):
+        prompt_seed, sd_seed = card_parts(seed, offset)
+        cards.append(replace(generate_prompt(prompt_seed), sd_seed=sd_seed))
+    return cards
 
 
 def render_cards(
@@ -102,6 +113,7 @@ def render_cards(
     height: int,
     steps: int,
     negative_prompt: str,
+    entropy_bits: float,
 ) -> None:
     from src.render import render_cards as render
 
@@ -111,6 +123,7 @@ def render_cards(
         height=height,
         steps=steps,
         negative_prompt=negative_prompt,
+        entropy_bits=entropy_bits,
     )
 
 
@@ -137,5 +150,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         height=args.height,
         steps=args.steps,
         negative_prompt=negative_prompt,
+        entropy_bits=estimate_seed_entropy(seed),
     )
     print(output_dir)

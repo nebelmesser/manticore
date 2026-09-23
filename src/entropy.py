@@ -27,6 +27,10 @@ def entropy_status(bits: float) -> str:
     return f"\r\033[K{bits:.1f} / {MIN_ENTROPY_BITS} bits"
 
 
+def format_input_entropy(bits: float) -> str:
+    return f"entropy: {bits:.1f} bits\n"
+
+
 def require_entropy(seed: int | str) -> float:
     bits = estimate_seed_entropy(seed)
     if bits < MIN_ENTROPY_BITS:

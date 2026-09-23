@@ -32,15 +32,17 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     calls = Calls()
 
-    def render(jobs, *, width, height, steps, negative_prompt):
+    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits):
         calls.append(
             {
                 "paths": [path for _card, path in jobs],
                 "prompts": [card.prompt for card, _path in jobs],
+                "seeds": [card.sd_seed for card, _path in jobs],
                 "width": width,
                 "height": height,
                 "steps": steps,
                 "negative_prompt": negative_prompt,
+                "entropy_bits": entropy_bits,
             }
         )
 
@@ -94,6 +96,8 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["height"] == 1024
     assert call["steps"] == 25
     assert call["negative_prompt"] == "text letters label title panels comics captions subtitle"
+    assert call["entropy_bits"] == 256.0
+    assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
     assert captured.out.strip() == str(tmp_path)
     assert captured.err == ""

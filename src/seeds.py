@@ -9,7 +9,7 @@ from src.prompt import PROMPT_ENTROPY_BITS, estimate_seed_entropy
 
 TORCH_MIN_SEED = -(2**63)
 TORCH_MAX_SEED = 2**64 - 1
-BATCH_SEED_BITS = 512
+SD_SEED_BITS = 64
 
 
 def parse_seed(value: str) -> int | str:
@@ -43,20 +43,21 @@ def seed_entropy_material(seed: int | str) -> tuple[int, int]:
     return value >> padding, bit_count
 
 
-def source_entropy_chunk(seed: int | str, card_index: int) -> tuple[int, int]:
-    """Take up to one prompt's worth of unconsumed source-seed entropy."""
+def take_bits(seed: int | str, start: int, width: int) -> tuple[int, int]:
+    """Read up to `width` unconsumed source bits, most significant bit first."""
 
+    if start < 0 or width < 0:
+        raise ValueError("bit slice cannot be negative")
     material, total_bits = seed_entropy_material(seed)
-    start = card_index * PROMPT_ENTROPY_BITS
-    if start >= total_bits:
+    if width == 0 or start >= total_bits:
         return 0, 0
-    chunk_bits = min(PROMPT_ENTROPY_BITS, total_bits - start)
-    shift = total_bits - start - chunk_bits
-    mask = (1 << chunk_bits) - 1
-    return (material >> shift) & mask, chunk_bits
+    bit_count = min(width, total_bits - start)
+    shift = total_bits - start - bit_count
+    mask = (1 << bit_count) - 1
+    return (material >> shift) & mask, bit_count
 
 
-def generated_seed_bits(seed: int | str, offset: int, bit_count: int) -> int:
+def generated_seed_bits(seed: int | str, offset: int, bit_count: int, role: bytes) -> int:
     if bit_count <= 0:
         return 0
     byte_count = (bit_count + 7) // 8
@@ -64,6 +65,8 @@ def generated_seed_bits(seed: int | str, offset: int, bit_count: int) -> int:
         hashlib.shake_256(
             b"manticore-batch-fill\0"
             + seed_payload(seed)
+            + b"\0"
+            + role
             + b"\0item:"
             + str(offset).encode("ascii")
         ).digest(byte_count),
@@ -72,16 +75,39 @@ def generated_seed_bits(seed: int | str, offset: int, bit_count: int) -> int:
     return value >> (byte_count * 8 - bit_count)
 
 
-def sequence_seed(seed: int | str, offset: int) -> int | str:
-    """Carry surplus source entropy forward, then fill to 512 bits."""
+def _place_high(carried: int, carried_bits: int, width: int, fill: int) -> int:
+    if carried_bits == 0:
+        return fill
+    return (carried << (width - carried_bits)) | fill
 
-    if offset == 0:
-        return seed
-    if offset < 0:
-        raise ValueError("seed sequence offset cannot be negative")
-    carried, carried_bits = source_entropy_chunk(seed, offset)
-    fill_bits = BATCH_SEED_BITS - carried_bits
-    return (carried << fill_bits) | generated_seed_bits(seed, offset, fill_bits)
+
+def card_parts(seed: int | str, index: int) -> tuple[int, int]:
+    """Split source entropy into this card's prompt bits, then its image seed.
+
+    Each card takes 272 prompt bits and then 64 seed bits. Real bits occupy the
+    high part of each value. Whatever is missing is deterministic fill, so later
+    cards never reuse bits already poured into an earlier prompt or seed.
+    """
+
+    if index < 0:
+        raise ValueError("card index cannot be negative")
+    stride = PROMPT_ENTROPY_BITS + SD_SEED_BITS
+    prompt_at = index * stride
+    prompt_chunk, prompt_bits = take_bits(seed, prompt_at, PROMPT_ENTROPY_BITS)
+    seed_chunk, seed_bits = take_bits(seed, prompt_at + PROMPT_ENTROPY_BITS, SD_SEED_BITS)
+    prompt_seed = _place_high(
+        prompt_chunk,
+        prompt_bits,
+        PROMPT_ENTROPY_BITS,
+        generated_seed_bits(seed, index, PROMPT_ENTROPY_BITS - prompt_bits, b"prompt"),
+    )
+    sd_seed = _place_high(
+        seed_chunk,
+        seed_bits,
+        SD_SEED_BITS,
+        generated_seed_bits(seed, index, SD_SEED_BITS - seed_bits, b"sd"),
+    )
+    return prompt_seed, sd_seed
 
 
 def to_sd_seed(seed: int | str) -> int:

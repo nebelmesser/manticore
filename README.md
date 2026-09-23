@@ -10,8 +10,8 @@ Techno-divination with Stable Diffusion 2.1. Entropy becomes a prompt and a seed
 Without an argument, scry asks you to enter entropy and shows the accumulated bits.
 Generation starts at 256 bits. A shorter seed is refused.
 
-The default is three cards, 512×1024, 25 steps. Generation shows one progress bar
-for all images. Files land in `outputs/YYYY-MM-DD-HHMMSS/`, or in
+The default is three cards, 512×1024, 25 steps. Generation shows the input
+entropy above one progress bar for all images. Files land in `outputs/YYYY-MM-DD-HHMMSS/`, or in
 `outputs/<name>/` when `--out` is set. Three cards are
 saved as `thesis.png`, `antithesis.png`, and `synthesis.png`. Each one has a
 black border — 20px around the picture and 40px along the bottom — and a

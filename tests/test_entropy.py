@@ -5,12 +5,22 @@ import re
 
 import pytest
 
-from src.entropy import MIN_ENTROPY_BITS, NotEnoughEntropy, enter_entropy, require_entropy
+from src.entropy import (
+    MIN_ENTROPY_BITS,
+    NotEnoughEntropy,
+    enter_entropy,
+    format_input_entropy,
+    require_entropy,
+)
 from src.prompt import estimate_seed_entropy
 
 
 def high_entropy_text() -> str:
     return "".join(chr(32 + index) for index in range(64))
+
+
+def test_input_entropy_line_is_one_line() -> None:
+    assert format_input_entropy(256) == "entropy: 256.0 bits\n"
 
 
 def test_short_values_are_rejected() -> None:
