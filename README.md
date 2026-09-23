@@ -7,8 +7,8 @@ Techno-divination with Stable Diffusion 2.1. Entropy becomes a prompt and a seed
 ./scry "enough entropy to pass the gate"
 ```
 
-Without an argument, scry asks you to enter entropy and shows the accumulated bits.
-Generation starts at 256 bits. A shorter seed is refused.
+Without an argument, scry accepts entropy immediately and loads the model at the same time.
+Type any entropy and press Enter to start. A seed argument shorter than 256 bits is refused.
 
 The default is three cards, 512×1024, 25 steps. Generation shows the input
 entropy above one progress bar for all images. Files land in `outputs/YYYY-MM-DD-HHMMSS/`, or in

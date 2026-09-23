@@ -21,7 +21,13 @@ base_python() {
   exit 1
 }
 
-if [[ ! -x "$venv_python" ]] || ! "$venv_python" -c "import torch, diffusers, PIL, huggingface_hub" >/dev/null 2>&1; then
+deps_ready() {
+  "$1" -c 'import importlib.util, sys
+need = ("torch", "diffusers", "PIL", "huggingface_hub")
+sys.exit(0 if all(importlib.util.find_spec(name) for name in need) else 1)'
+}
+
+if [[ ! -x "$venv_python" ]] || ! deps_ready "$venv_python"; then
   if [[ ! -x "$venv_python" ]]; then
     "$(base_python)" -m venv "$root/.venv"
   fi

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import replace
 from datetime import datetime
@@ -34,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "seed",
         nargs="?",
-        help="integer or text of at least 256 bits; omit it to type entropy",
+        help="integer or text of at least 256 bits; omit it to type any entropy and press Enter",
     )
     parser.add_argument("--count", type=int, default=3, help="number of cards to generate")
     parser.add_argument("--width", type=int, default=512, help="width, a multiple of 8")
@@ -88,7 +89,7 @@ def read_seed(
         if argument is not None:
             seed = parse_seed(argument)
         elif stdin.isatty():
-            seed = enter_entropy_tty(stdin, stderr)
+            return enter_entropy_tty(stdin, stderr)
         else:
             seed = stdin.read()
         require_entropy(seed)
@@ -114,6 +115,7 @@ def render_cards(
     steps: int,
     negative_prompt: str,
     entropy_bits: float,
+    prepare=None,
 ) -> None:
     from src.render import render_cards as render
 
@@ -124,6 +126,7 @@ def render_cards(
         steps=steps,
         negative_prompt=negative_prompt,
         entropy_bits=entropy_bits,
+        prepare=prepare,
     )
 
 
@@ -131,6 +134,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     validate_args(parser, args)
+    interactive = args.seed is None and sys.stdin.isatty()
+    if interactive:
+        os.environ["TQDM_DISABLE"] = "1"
+    from src.render import start_pipeline
+
+    loader = start_pipeline(quiet_download=interactive)
     seed = read_seed(args.seed)
     try:
         cards = cards_for(seed, args.count)
@@ -151,5 +160,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         steps=args.steps,
         negative_prompt=negative_prompt,
         entropy_bits=estimate_seed_entropy(seed),
+        prepare=loader.result,
     )
     print(output_dir)

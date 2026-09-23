@@ -6,6 +6,7 @@ import re
 import pytest
 
 from src.entropy import (
+    ENTROPY_PROMPT,
     MIN_ENTROPY_BITS,
     NotEnoughEntropy,
     enter_entropy,
@@ -39,84 +40,60 @@ def test_256_bit_integer_is_accepted() -> None:
     assert error.value.bits == 255.0
 
 
-def test_entry_starts_at_256_bits_and_stops() -> None:
-    source = high_entropy_text()
-    assert estimate_seed_entropy(source) >= MIN_ENTROPY_BITS
+def chars(source: str):
     cursor = {"index": 0}
 
     def read1() -> str:
         index = cursor["index"]
+        if index >= len(source):
+            return ""
         cursor["index"] = index + 1
         return source[index]
 
-    written: list[str] = []
-    text = enter_entropy(read1, written.append, lambda _timeout: False)
+    return read1
 
-    assert estimate_seed_entropy(text) >= MIN_ENTROPY_BITS
-    assert text == source[: len(text)]
-    assert cursor["index"] == len(text)
-    assert cursor["index"] < len(source)
-    assert written[0] == "Enter entropy\n"
+
+def test_entry_returns_on_enter() -> None:
+    source = "short\rleftover"
+    written: list[str] = []
+    text = enter_entropy(chars(source), written.append)
+
+    assert text == "short"
+    assert estimate_seed_entropy(text) < MIN_ENTROPY_BITS
+    assert written[0] == ENTROPY_PROMPT
     assert written[-1] == "\n"
-    assert f"{MIN_ENTROPY_BITS} bits" in "".join(written)
+    assert "/ 256" not in "".join(written)
+
+
+def test_entry_keeps_text_past_256_bits_until_enter() -> None:
+    source = high_entropy_text() + "\n"
+    assert estimate_seed_entropy(source[:-1]) >= MIN_ENTROPY_BITS
+    text = enter_entropy(chars(source), lambda _data: None)
+
+    assert text == source[:-1]
 
 
 def test_entry_shows_growing_bit_count() -> None:
-    source = high_entropy_text()
-    cursor = {"index": 0}
-
-    def read1() -> str:
-        index = cursor["index"]
-        cursor["index"] = index + 1
-        return source[index]
-
+    source = "abc\n"
     written: list[str] = []
-    enter_entropy(read1, written.append, lambda _timeout: False)
+    enter_entropy(chars(source), written.append)
     statuses = [line for line in written if line.startswith("\r")]
     bits = [float(re.search(r"\d+\.\d+", line).group(0)) for line in statuses]
 
     assert bits[0] == 0.0
-    assert bits[-1] >= MIN_ENTROPY_BITS
+    assert bits[-1] == pytest.approx(estimate_seed_entropy("abc"), abs=0.05)
     assert bits == sorted(bits)
 
 
 def test_backspace_removes_entropy() -> None:
-    source = "abcd\x7f"
-    cursor = {"index": 0}
+    text = enter_entropy(chars("abcd\x7f\n"), lambda _data: None)
 
-    def read1() -> str:
-        if cursor["index"] >= len(source):
-            return ""
-        char = source[cursor["index"]]
-        cursor["index"] += 1
-        return char
-
-    with pytest.raises(NotEnoughEntropy) as error:
-        enter_entropy(read1, lambda _data: None, lambda _timeout: False)
-
-    assert math.isclose(error.value.bits, estimate_seed_entropy("abc"))
+    assert text == "abc"
+    assert math.isclose(estimate_seed_entropy(text), estimate_seed_entropy("abc"))
 
 
-def test_buffered_paste_is_kept() -> None:
-    source = high_entropy_text()
-    crossing = 1
-    while estimate_seed_entropy(source[:crossing]) < MIN_ENTROPY_BITS:
-        crossing += 1
-    cursor = {"index": 0}
-    waits = {"count": 0}
+def test_paste_before_enter_is_kept() -> None:
+    source = high_entropy_text() + "\r"
+    text = enter_entropy(chars(source), lambda _data: None)
 
-    def read1() -> str:
-        char = source[cursor["index"]]
-        cursor["index"] += 1
-        return char
-
-    def wait(timeout: float) -> bool:
-        if timeout == 0:
-            return cursor["index"] < len(source)
-        waits["count"] += 1
-        return cursor["index"] < len(source)
-
-    text = enter_entropy(read1, lambda _data: None, wait)
-
-    assert text == source
-    assert waits["count"] >= 1
+    assert text == source[:-1]

@@ -7,6 +7,7 @@ TRIAD = ("THESIS", "ANTITHESIS", "SYNTHESIS")
 BORDER = 20
 BOTTOM_BORDER = 40
 CAPTION_SIZE = 28
+CORNER_RADIUS = 5
 
 
 def card_filename(index: int, count: int) -> str:
@@ -20,10 +21,13 @@ def frame_card(image, caption: str):
 
     from PIL import Image, ImageDraw, ImageFont
 
-    framed = Image.new(
-        "RGB",
-        (image.width + BORDER * 2, image.height + BORDER + BOTTOM_BORDER),
-        "black",
+    size = (image.width + BORDER * 2, image.height + BORDER + BOTTOM_BORDER)
+    framed = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(framed)
+    draw.rounded_rectangle(
+        (0, 0, size[0] - 1, size[1] - 1),
+        radius=CORNER_RADIUS,
+        fill=(0, 0, 0, 255),
     )
     framed.paste(image, (BORDER, BORDER))
     draw = ImageDraw.Draw(framed)
@@ -31,7 +35,7 @@ def frame_card(image, caption: str):
     draw.text(
         (framed.width / 2, image.height + BORDER + BOTTOM_BORDER / 2),
         caption,
-        fill="white",
+        fill=(255, 255, 255, 255),
         font=font,
         anchor="mm",
     )

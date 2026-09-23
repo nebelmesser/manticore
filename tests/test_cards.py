@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.cards import BORDER, BOTTOM_BORDER, TRIAD, card_filename, frame_card
+from src.cards import BORDER, BOTTOM_BORDER, CORNER_RADIUS, TRIAD, card_filename, frame_card
 
 
 def test_three_cards_use_triad_names() -> None:
@@ -25,14 +25,16 @@ def test_frame_adds_black_border_and_centered_white_caption() -> None:
     framed = frame_card(image, "THESIS")
 
     assert framed.size == (40 + BORDER * 2, 20 + BORDER + BOTTOM_BORDER)
-    assert framed.getpixel((0, 0)) == (0, 0, 0)
-    assert framed.getpixel((BORDER, BORDER)) == (255, 0, 0)
-    assert framed.getpixel((BORDER - 1, BORDER)) == (0, 0, 0)
+    assert framed.getpixel((0, 0))[3] == 0
+    assert framed.getpixel((0, CORNER_RADIUS))[:3] == (0, 0, 0)
+    assert framed.getpixel((0, CORNER_RADIUS))[3] == 255
+    assert framed.getpixel((BORDER, BORDER))[:3] == (255, 0, 0)
+    assert framed.getpixel((BORDER - 1, BORDER))[:3] == (0, 0, 0)
     white = [
         (x, y)
         for y in range(framed.height - BOTTOM_BORDER, framed.height)
         for x in range(framed.width)
-        if framed.getpixel((x, y)) == (255, 255, 255)
+        if framed.getpixel((x, y))[:3] == (255, 255, 255)
     ]
     assert white
     assert all(y >= framed.height - BOTTOM_BORDER for _x, y in white)

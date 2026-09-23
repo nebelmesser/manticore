@@ -10,7 +10,7 @@ from src.cli import build_parser, main, reserve_output_dir
 from src.entropy import MIN_ENTROPY_BITS
 from src.model import REQUIRED_FILES, model_is_ready
 from src.progress import render_bar
-from src.prompt import FRAGMENT_COUNT
+from src.prompt import FRAGMENT_COUNT, estimate_seed_entropy
 
 
 class TestFragments:
@@ -32,7 +32,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     calls = Calls()
 
-    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits):
+    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits, prepare):
         calls.append(
             {
                 "paths": [path for _card, path in jobs],
@@ -52,6 +52,12 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         lambda: "text letters label title panels comics captions subtitle",
     )
     monkeypatch.setattr("src.cli.render_cards", render)
+
+    class DummyLoad:
+        def result(self) -> None:
+            return None
+
+    monkeypatch.setattr("src.render.start_pipeline", lambda **_kwargs: DummyLoad())
     calls.out = None
 
     def reserve(*_args, **kwargs):
@@ -146,6 +152,15 @@ def test_missing_seed_reads_tty(fake_render, monkeypatch: pytest.MonkeyPatch) ->
     main([])
 
     assert len(fake_render[0]["paths"]) == 3
+
+
+def test_tty_accepts_short_entropy(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("src.cli.enter_entropy_tty", lambda _stdin, _stderr: "short")
+
+    main([])
+
+    assert fake_render[0]["entropy_bits"] == pytest.approx(estimate_seed_entropy("short"))
 
 
 def test_piped_entropy_is_accepted(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:

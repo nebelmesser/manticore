@@ -4,9 +4,10 @@ import json
 import logging
 import os
 import sys
+import threading
 import warnings
 from pathlib import Path
-from typing import Sequence, TextIO
+from typing import Callable, Sequence, TextIO
 
 from src.cards import TRIAD, frame_card
 from src.entropy import format_input_entropy
@@ -36,6 +37,44 @@ def _quiet_libraries() -> None:
     disable_diffusers_progress_bar()
     disable_transformers_progress_bar()
     transformers_logging.set_verbosity_error()
+
+
+class PipelineLoad:
+    """Load Stable Diffusion while entropy is being collected."""
+
+    def __init__(self, model_dir: Path, quiet_download: bool) -> None:
+        self.model_dir = model_dir
+        self.quiet_download = quiet_download
+        self.pipe = None
+        self.device = "cpu"
+        self.error: BaseException | None = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self) -> PipelineLoad:
+        self._thread.start()
+        return self
+
+    def _run(self) -> None:
+        try:
+            if self.quiet_download:
+                _quiet_libraries()
+                ensure_model(self.model_dir)
+            else:
+                ensure_model(self.model_dir)
+                _quiet_libraries()
+            self.pipe, self.device = _load_pipeline(self.model_dir)
+        except BaseException as exc:
+            self.error = exc
+
+    def result(self) -> tuple:
+        self._thread.join()
+        if self.error is not None:
+            raise self.error
+        return self.pipe, self.device
+
+
+def start_pipeline(model_dir: Path = MODEL_DIR, quiet_download: bool = False) -> PipelineLoad:
+    return PipelineLoad(model_dir, quiet_download).start()
 
 
 def _load_pipeline(model_dir: Path):
@@ -114,11 +153,10 @@ def render_cards(
     entropy_bits: float,
     model_dir: Path = MODEL_DIR,
     progress: TextIO | None = None,
+    prepare: Callable[[], tuple] | None = None,
 ) -> None:
     import torch
 
-    ensure_model(model_dir)
-    _quiet_libraries()
     stream = progress if progress is not None else sys.stderr
     stream.write(format_input_entropy(entropy_bits))
     stream.flush()
@@ -126,7 +164,12 @@ def render_cards(
     pipe = None
     device = "cpu"
     try:
-        pipe, device = _load_pipeline(model_dir)
+        if prepare is None:
+            ensure_model(model_dir)
+            _quiet_libraries()
+            pipe, device = _load_pipeline(model_dir)
+        else:
+            pipe, device = prepare()
         for image_index, (card, path) in enumerate(jobs):
             sd_seed = card.sd_seed
             generator = torch.Generator(device="cpu").manual_seed(sd_seed)

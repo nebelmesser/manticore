@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import select
 import sys
 import termios
 import tty
@@ -10,7 +9,7 @@ from src.prompt import estimate_seed_entropy
 
 
 MIN_ENTROPY_BITS = 256
-ENTROPY_PROMPT = "Enter entropy\n"
+ENTROPY_PROMPT = "Type any entropy and press Enter\n"
 
 
 class NotEnoughEntropy(Exception):
@@ -24,7 +23,7 @@ def not_enough_entropy_message(bits: float) -> str:
 
 
 def entropy_status(bits: float) -> str:
-    return f"\r\033[K{bits:.1f} / {MIN_ENTROPY_BITS} bits"
+    return f"\r\033[K{bits:.1f} bits"
 
 
 def format_input_entropy(bits: float) -> str:
@@ -46,47 +45,20 @@ def _apply_char(text: str, char: str) -> str:
     return text + char
 
 
-def _absorb(text: str, read1: Callable[[], str], wait: Callable[[float], bool], timeout: float) -> tuple[str, bool]:
-    if not wait(timeout):
-        return text, False
-    changed = False
-    while True:
-        char = read1()
-        if char in ("", "\x04"):
-            break
-        if char == "\x03":
-            raise KeyboardInterrupt
-        updated = _apply_char(text, char)
-        changed = changed or updated != text
-        text = updated
-        if not wait(0):
-            break
-    return text, changed
-
-
 def enter_entropy(
     read1: Callable[[], str],
     write: Callable[[str], None],
-    wait: Callable[[float], bool],
-    *,
-    minimum: int = MIN_ENTROPY_BITS,
 ) -> str:
-    """Read characters until estimated entropy reaches `minimum` bits."""
+    """Read characters until Enter. Any amount of entropy is accepted."""
 
     write(ENTROPY_PROMPT)
     text = ""
     while True:
-        bits = estimate_seed_entropy(text)
-        write(entropy_status(bits))
-        if bits >= minimum:
-            text, absorbed = _absorb(text, read1, wait, 0.05)
-            if absorbed:
-                continue
+        write(entropy_status(estimate_seed_entropy(text)))
+        char = read1()
+        if char in ("", "\x04", "\r", "\n"):
             write("\n")
             return text
-        char = read1()
-        if char in ("", "\x04"):
-            raise NotEnoughEntropy(bits)
         if char == "\x03":
             raise KeyboardInterrupt
         text = _apply_char(text, char)
@@ -103,12 +75,9 @@ def enter_entropy_tty(stdin: TextIO = sys.stdin, stderr: TextIO = sys.stderr) ->
         stderr.write(data)
         stderr.flush()
 
-    def wait(timeout: float) -> bool:
-        return bool(select.select([fd], [], [], timeout)[0])
-
     try:
         tty.setraw(fd)
-        return enter_entropy(read1, write, wait)
+        return enter_entropy(read1, write)
     except KeyboardInterrupt:
         stderr.write("\n")
         raise
