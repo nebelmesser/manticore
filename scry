@@ -1,23 +1,36 @@
 #!/usr/bin/env bash
+# Minimum: Python 3.10 or newer.
+# The first run also needs a network connection. scry creates .venv,
+# installs dependencies, and downloads Stable Diffusion 2.1.
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 venv_python="$root/.venv/bin/python"
 
+python_ok() {
+  "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'
+}
+
 base_python() {
-  if [[ -x /opt/homebrew/bin/python3.12 ]]; then
-    echo /opt/homebrew/bin/python3.12
-    return
-  fi
-  if command -v python3.12 >/dev/null 2>&1; then
-    command -v python3.12
-    return
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    command -v python3
-    return
-  fi
-  echo "Python 3 not found." >&2
+  local candidate resolved
+  for candidate in /opt/homebrew/bin/python3.12 python3.12 python3.13 python3.11 python3.10 python3; do
+    if [[ "$candidate" == /* ]]; then
+      [[ -x "$candidate" ]] || continue
+      resolved="$candidate"
+    else
+      command -v "$candidate" >/dev/null 2>&1 || continue
+      resolved="$(command -v "$candidate")"
+    fi
+    if python_ok "$resolved"; then
+      echo "$resolved"
+      return
+    fi
+  done
+  cat >&2 <<'EOF'
+scry needs Python 3.10 or newer.
+The first run also needs a network connection: scry creates .venv,
+installs dependencies, and downloads Stable Diffusion 2.1.
+EOF
   exit 1
 }
 

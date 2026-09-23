@@ -167,10 +167,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     interactive = args.seed is None and sys.stdin.isatty()
     if interactive:
         os.environ["TQDM_DISABLE"] = "1"
-    from src.render import start_pipeline
+    from src.model import model_is_ready
+    from src.render import load_cold_pipeline, start_pipeline
 
-    loader = start_pipeline(quiet_download=interactive)
-    seed = read_seed(args.seed)
+    if model_is_ready():
+        loader = start_pipeline(quiet_download=interactive)
+        seed = read_seed(args.seed)
+    elif args.seed is not None:
+        seed = read_seed(args.seed)
+        loader = load_cold_pipeline()
+    else:
+        loader = load_cold_pipeline()
+        seed = read_seed(args.seed)
     separate = args.count is not None
     count = args.count if separate else len(TRIAD)
     try:

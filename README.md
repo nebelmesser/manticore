@@ -33,4 +33,4 @@ By default cards are saved as one composite image. Pass `--count` to save them i
 
 The negative prompt is a line from `negative.txt`. One line is used as written. Several lines contribute one of them at random.
 
-The first run creates `.venv`, installs dependencies, and downloads SD 2.1 if the weights are not already present, showing download progress.
+The first run creates `.venv`, installs dependencies, and downloads SD 2.1 if the weights are not already present. That download and the model load share the same progress field as generation.

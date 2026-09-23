@@ -60,6 +60,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
             return None
 
     monkeypatch.setattr("src.render.start_pipeline", lambda **_kwargs: DummyLoad())
+    monkeypatch.setattr("src.model.model_is_ready", lambda _path=None: True)
     calls.out = None
 
     def reserve(*_args, **kwargs):
@@ -85,6 +86,44 @@ def test_defaults() -> None:
     assert args.steps == 25
     assert args.out is None
     assert not hasattr(args, "negative")
+
+
+def test_cold_start_finishes_before_entropy(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
+    order = []
+    monkeypatch.setattr("src.model.model_is_ready", lambda _path=None: False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(
+        "src.cli.enter_entropy_tty",
+        lambda *_args: order.append("entropy") or high_entropy_text(),
+    )
+
+    class Ready:
+        def result(self) -> None:
+            return None
+
+    monkeypatch.setattr("src.render.load_cold_pipeline", lambda **_kwargs: order.append("cold") or Ready())
+    monkeypatch.setattr(
+        "src.render.start_pipeline",
+        lambda **_kwargs: order.append("warm") or Ready(),
+    )
+
+    main([])
+
+    assert order == ["cold", "entropy"]
+
+
+def test_short_seed_is_refused_before_a_cold_download(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.model.model_is_ready", lambda _path=None: False)
+
+    def fail_download(**_kwargs):
+        raise AssertionError("download started")
+
+    monkeypatch.setattr("src.render.load_cold_pipeline", fail_download)
+
+    with pytest.raises(SystemExit) as error:
+        main(["42"])
+
+    assert error.value.code == 2
 
 
 def test_short_seed_is_refused(fake_render, capsys: pytest.CaptureFixture[str]) -> None:

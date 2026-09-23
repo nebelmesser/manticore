@@ -13,7 +13,7 @@ from src.cards import DIVINATION_NAME, TRIAD, frame_card, join_cards
 from src.entropy import format_input_entropy
 from src.model import ensure_model
 from src.paths import MODEL_DIR
-from src.progress import ProgressBar
+from src.progress import CELL_COUNT, ProgressBar
 from src.prompt import GeneratedPrompt
 
 
@@ -77,24 +77,154 @@ def start_pipeline(model_dir: Path = MODEL_DIR, quiet_download: bool = False) ->
     return PipelineLoad(model_dir, quiet_download).start()
 
 
-def _load_pipeline(model_dir: Path):
+DOWNLOAD_SHARE = 0.75
+WEIGHT_LOADS = 3
+
+
+class _WeightBar:
+    """Iterable tqdm stand-in for the "Loading weights" loops."""
+
+    def __init__(self, iterable=None, total=None, desc=None, **kwargs) -> None:
+        self.iterable = iterable
+        self.desc = desc or ""
+        self.n = 0
+        if total is None and iterable is not None:
+            total = len(iterable)
+        self.total = total or 0
+        self.on_step = kwargs.get("on_step")
+
+    def __iter__(self):
+        for item in self.iterable:
+            yield item
+            self.update(1)
+
+    def update(self, n=1) -> None:
+        self.n += int(n or 0)
+        if self.on_step is not None:
+            self.on_step(self)
+
+    def close(self) -> None:
+        return None
+
+    def __enter__(self) -> _WeightBar:
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.close()
+
+
+class ColdLoad:
+    """Download missing weights and load the pipeline under one Hilbert bar."""
+
+    def __init__(self, model_dir: Path, stream: TextIO | None = None) -> None:
+        self.model_dir = model_dir
+        self.stream = stream if stream is not None else sys.stderr
+        self.pipe = None
+        self.device = "cpu"
+        self._bars: list[_WeightBar] = []
+        self._download = 0.0
+        self._load = 0.0
+        self._cells = -1
+        self._lock = threading.RLock()
+        self._bar: ProgressBar | None = None
+
+    def result(self) -> tuple:
+        return self.pipe, self.device
+
+    def run(self) -> ColdLoad:
+        self._bar = ProgressBar(CELL_COUNT, self.stream)
+        try:
+            _quiet_libraries()
+            ensure_model(self.model_dir, progress=self._on_download)
+            self.pipe, self.device = _load_pipeline(self.model_dir, progress=self)
+        except BaseException:
+            self._bar.close()
+            raise
+        self._bar.finish()
+        return self
+
+    def _on_download(self, done: int, total: int) -> None:
+        with self._lock:
+            self._download = 0.0 if total <= 0 else min(1.0, done / total)
+            self._paint()
+
+    def _on_weight(self, bar: _WeightBar) -> None:
+        if bar.desc != "Loading weights":
+            return
+        with self._lock:
+            if bar not in self._bars:
+                self._bars.append(bar)
+            parts = [min(1.0, item.n / item.total) for item in self._bars if item.total]
+            parts.extend([0.0] * max(0, WEIGHT_LOADS - len(parts)))
+            self._download = 1.0
+            self._load = sum(parts[:WEIGHT_LOADS]) / WEIGHT_LOADS * 0.9
+            self._paint()
+
+    def note_device(self) -> None:
+        with self._lock:
+            self._download = 1.0
+            self._load = 1.0
+            self._paint()
+
+    def _paint(self) -> None:
+        fraction = DOWNLOAD_SHARE * self._download + (1.0 - DOWNLOAD_SHARE) * self._load
+        cells = round(CELL_COUNT * fraction)
+        if cells == self._cells or self._bar is None:
+            return
+        self._cells = cells
+        self._bar.set_done(cells)
+
+
+def load_cold_pipeline(model_dir: Path = MODEL_DIR, stream: TextIO | None = None) -> ColdLoad:
+    return ColdLoad(model_dir, stream).run()
+
+
+def _accelerator(torch) -> tuple[str, object]:
+    if torch.cuda.is_available():
+        return "cuda", torch.float16
+    if torch.backends.mps.is_available():
+        return "mps", torch.float16
+    return "cpu", torch.float32
+
+
+def _empty_cache(torch, device: str) -> None:
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    elif device == "mps":
+        torch.mps.empty_cache()
+
+
+def _load_pipeline(model_dir: Path, progress: ColdLoad | None = None):
     import torch
     from diffusers import DPMSolverMultistepScheduler, StableDiffusionPipeline
 
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    dtype = torch.float16 if device == "mps" else torch.float32
-    pipe = StableDiffusionPipeline.from_pretrained(
-        str(model_dir),
-        variant="fp16",
-        use_safetensors=True,
-        local_files_only=True,
-        dtype=dtype,
-        safety_checker=None,
-        feature_extractor=None,
-        requires_safety_checker=False,
-    )
+    device, dtype = _accelerator(torch)
+
+    def hook(_factory, args, kwargs):
+        return _WeightBar(*args, on_step=None if progress is None else progress._on_weight, **kwargs)
+
+    if progress is not None:
+        from transformers.utils import logging as transformers_logging
+
+        transformers_logging.set_tqdm_hook(hook)
+    try:
+        pipe = StableDiffusionPipeline.from_pretrained(
+            str(model_dir),
+            variant="fp16",
+            use_safetensors=True,
+            local_files_only=True,
+            dtype=dtype,
+            safety_checker=None,
+            feature_extractor=None,
+            requires_safety_checker=False,
+        )
+    finally:
+        if progress is not None:
+            transformers_logging.set_tqdm_hook(None)
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
     pipe = pipe.to(device)
+    if progress is not None:
+        progress.note_device()
     pipe.vae.enable_slicing()
     pipe.set_progress_bar_config(disable=True)
     return pipe, device
@@ -257,5 +387,5 @@ def render_cards(
         bar.finish()
     finally:
         bar.close()
-        if pipe is not None and device == "mps":
-            torch.mps.empty_cache()
+        if pipe is not None:
+            _empty_cache(torch, device)
