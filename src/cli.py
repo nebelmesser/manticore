@@ -116,6 +116,7 @@ def render_cards(
     negative_prompt: str,
     entropy_bits: float,
     prepare=None,
+    show_entropy: bool = True,
 ) -> None:
     from src.render import render_cards as render
 
@@ -127,6 +128,7 @@ def render_cards(
         negative_prompt=negative_prompt,
         entropy_bits=entropy_bits,
         prepare=prepare,
+        show_entropy=show_entropy,
     )
 
 
@@ -161,5 +163,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         negative_prompt=negative_prompt,
         entropy_bits=estimate_seed_entropy(seed),
         prepare=loader.result,
+        show_entropy=not interactive,
     )
     print(output_dir)

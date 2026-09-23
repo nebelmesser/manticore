@@ -32,7 +32,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     calls = Calls()
 
-    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits, prepare):
+    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits, prepare, show_entropy):
         calls.append(
             {
                 "paths": [path for _card, path in jobs],
@@ -43,6 +43,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "steps": steps,
                 "negative_prompt": negative_prompt,
                 "entropy_bits": entropy_bits,
+                "show_entropy": show_entropy,
             }
         )
 
@@ -103,6 +104,7 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["steps"] == 25
     assert call["negative_prompt"] == "text letters label title panels comics captions subtitle"
     assert call["entropy_bits"] == 256.0
+    assert call["show_entropy"] is True
     assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
     assert captured.out.strip() == str(tmp_path)
@@ -152,6 +154,7 @@ def test_missing_seed_reads_tty(fake_render, monkeypatch: pytest.MonkeyPatch) ->
     main([])
 
     assert len(fake_render[0]["paths"]) == 3
+    assert fake_render[0]["show_entropy"] is False
 
 
 def test_tty_accepts_short_entropy(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,6 +164,7 @@ def test_tty_accepts_short_entropy(fake_render, monkeypatch: pytest.MonkeyPatch)
     main([])
 
     assert fake_render[0]["entropy_bits"] == pytest.approx(estimate_seed_entropy("short"))
+    assert fake_render[0]["show_entropy"] is False
 
 
 def test_piped_entropy_is_accepted(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,6 +173,7 @@ def test_piped_entropy_is_accepted(fake_render, monkeypatch: pytest.MonkeyPatch)
     main([])
 
     assert len(fake_render) == 1
+    assert fake_render[0]["show_entropy"] is True
 
 
 def test_piped_short_entropy_is_refused(fake_render, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -201,12 +206,26 @@ def test_dimensions_must_be_multiples_of_eight() -> None:
 
 
 def test_progress_bar_is_only_a_bar() -> None:
-    assert render_bar(0, 75) == "\r[" + "░" * 32 + "]   0%"
+    empty = render_bar(0, 75).split("\n")
+    assert len(empty) == 8
+    assert all(line == "░" * 16 for line in empty)
+
     finished = render_bar(75, 75)
-    assert finished.endswith("100%")
-    assert "█" * 32 in finished
+    assert finished.split("\n") == ["█" * 16] * 8
+    assert "%" not in finished
     assert "prompt" not in finished
     assert "card" not in finished
+
+
+def test_progress_bar_fills_pairs_from_the_top_left() -> None:
+    lines = render_bar(1, 64).split("\n")
+    assert lines[0] == "██" + "░" * 14
+    assert all(line == "░" * 16 for line in lines[1:])
+
+    two = render_bar(2, 64).split("\n")
+    assert two[0] == "████" + "░" * 12
+    assert "▀" not in render_bar(3, 64)
+    assert "▄" not in render_bar(3, 64)
 
 
 def test_model_ready_requires_every_file(tmp_path) -> None:

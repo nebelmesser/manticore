@@ -1,6 +1,18 @@
-# scry
+# Manticore
 
-Techno-divination with Stable Diffusion 2.1. Entropy becomes a prompt and a seed.
+
+![Example divination](assets/preview.jpg)
+
+
+Digital divination using Stable Diffusion 2.1. It is quite imperfect, producing strange, ambiguous images.
+We take 256 bits of entropy from the querent, expand them into random prompts, and generate three images: thesis, antithesis, and synthesis.
+The thrill lies in the space of possibilities—roughly 10⁷⁷ initial states. The machine pulls a reading from a virtually inexhaustible realm of imagery, and the human interprets it.
+Yet the future remains unpredictable; the issue runs deeper than mere divination.
+
+Technomancy is divination using algorithms, random number generators, neural networks, and other forms of computational magic.
+I appreciate this particular shift: whereas randomness used to be drawn from cards, dice, or coins, one can now take entropy and run it through an old generative model.
+SD 2.1 excels thanks to its "imperfections": its flawed understanding of the world leads it to consistently produce strange, symbolic constructs that invite interpretation.
+
 
 ```bash
 ./scry

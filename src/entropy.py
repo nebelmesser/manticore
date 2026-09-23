@@ -57,7 +57,7 @@ def enter_entropy(
         write(entropy_status(estimate_seed_entropy(text)))
         char = read1()
         if char in ("", "\x04", "\r", "\n"):
-            write("\n")
+            write("\r\n")
             return text
         if char == "\x03":
             raise KeyboardInterrupt
@@ -79,7 +79,7 @@ def enter_entropy_tty(stdin: TextIO = sys.stdin, stderr: TextIO = sys.stderr) ->
         tty.setraw(fd)
         return enter_entropy(read1, write)
     except KeyboardInterrupt:
-        stderr.write("\n")
+        stderr.write("\r\n")
         raise
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, previous)

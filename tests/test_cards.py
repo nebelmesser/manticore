@@ -19,16 +19,16 @@ def test_other_counts_stay_numbered() -> None:
 
 
 def test_frame_adds_black_border_and_centered_white_caption() -> None:
-    PIL = pytest.importorskip("PIL")
-    image = PIL.Image.new("RGB", (40, 20), "red")
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", (40, 20), "red")
 
     framed = frame_card(image, "THESIS")
 
     assert framed.size == (40 + BORDER * 2, 20 + BORDER + BOTTOM_BORDER)
-    assert framed.getpixel((0, 0))[3] == 0
-    assert framed.getpixel((0, CORNER_RADIUS))[:3] == (0, 0, 0)
-    assert framed.getpixel((0, CORNER_RADIUS))[3] == 255
-    assert framed.getpixel((BORDER, BORDER))[:3] == (255, 0, 0)
+    assert framed.getpixel((0, 0)) == (0, 0, 0, 255)
+    assert framed.getpixel((BORDER, BORDER))[:3] == (0, 0, 0)
+    assert framed.getpixel((BORDER + 1, BORDER + 1))[0] not in (0, 255)
+    assert framed.getpixel((BORDER + CORNER_RADIUS, BORDER + CORNER_RADIUS))[:3] == (255, 0, 0)
     assert framed.getpixel((BORDER - 1, BORDER))[:3] == (0, 0, 0)
     white = [
         (x, y)

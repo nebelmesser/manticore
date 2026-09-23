@@ -61,7 +61,7 @@ def test_entry_returns_on_enter() -> None:
     assert text == "short"
     assert estimate_seed_entropy(text) < MIN_ENTROPY_BITS
     assert written[0] == ENTROPY_PROMPT
-    assert written[-1] == "\n"
+    assert written[-1] == "\r\n"
     assert "/ 256" not in "".join(written)
 
 
@@ -77,7 +77,7 @@ def test_entry_shows_growing_bit_count() -> None:
     source = "abc\n"
     written: list[str] = []
     enter_entropy(chars(source), written.append)
-    statuses = [line for line in written if line.startswith("\r")]
+    statuses = [line for line in written if line.startswith("\r") and re.search(r"\d+\.\d+", line)]
     bits = [float(re.search(r"\d+\.\d+", line).group(0)) for line in statuses]
 
     assert bits[0] == 0.0

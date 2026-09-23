@@ -154,12 +154,14 @@ def render_cards(
     model_dir: Path = MODEL_DIR,
     progress: TextIO | None = None,
     prepare: Callable[[], tuple] | None = None,
+    show_entropy: bool = True,
 ) -> None:
     import torch
 
     stream = progress if progress is not None else sys.stderr
-    stream.write(format_input_entropy(entropy_bits))
-    stream.flush()
+    if show_entropy:
+        stream.write("\r" + format_input_entropy(entropy_bits))
+        stream.flush()
     bar = ProgressBar(len(jobs) * steps, stream)
     pipe = None
     device = "cpu"
