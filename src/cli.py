@@ -161,6 +161,13 @@ def render_cards(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    try:
+        _main(argv)
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None
+
+
+def _main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     validate_args(parser, args)

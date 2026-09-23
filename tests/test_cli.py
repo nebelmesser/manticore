@@ -126,6 +126,22 @@ def test_short_seed_is_refused_before_a_cold_download(fake_render, monkeypatch: 
     assert error.value.code == 2
 
 
+def test_interrupt_exits_quietly(fake_render, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def interrupted(argument, stdin=None, stderr=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("src.cli.read_seed", interrupted)
+
+    with pytest.raises(SystemExit) as error:
+        main([str(1 << 255)])
+
+    captured = capsys.readouterr()
+    assert error.value.code == 130
+    assert captured.out == ""
+    assert captured.err == ""
+    assert fake_render == []
+
+
 def test_short_seed_is_refused(fake_render, capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as error:
         main(["42"])
