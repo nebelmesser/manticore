@@ -31,7 +31,7 @@ def _hilbert_path(order: int = 4) -> tuple[tuple[int, int], ...]:
         walk(x + xi // 2 + yi // 2, y + xj // 2 + yj // 2, xi // 2, xj // 2, yi // 2, yj // 2, half)
         walk(x + xi // 2 + yi, y + xj // 2 + yj, -yi // 2, -yj // 2, -xi // 2, -xj // 2, half)
 
-    walk(0, 0, side, 0, 0, side, side)
+    walk(0, 0, 0, side, side, 0, side)
     return tuple(points)
 
 

@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence, TextIO
 
-from src.cards import card_filename
+from src.cards import TRIAD, card_filename
 from src.entropy import (
     NotEnoughEntropy,
     enter_entropy_tty,
@@ -26,30 +26,41 @@ from src.prompt import (
 from src.seeds import card_parts, parse_seed
 
 
+class _DefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    def _get_help_string(self, action: argparse.Action) -> str:
+        if action.dest == "count":
+            return action.help
+        return super()._get_help_string(action)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scry",
         description="Techno-divination: entropy becomes Stable Diffusion 2.1 cards.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=_DefaultsHelpFormatter,
     )
     parser.add_argument(
         "seed",
         nargs="?",
         help="integer or text of at least 256 bits; omit it to type any entropy and press Enter",
     )
-    parser.add_argument("--count", type=int, default=3, help="number of cards to generate")
+    parser.add_argument(
+        "--count",
+        type=int,
+        help="number of cards to save in a folder; omit to write one combined image",
+    )
     parser.add_argument("--width", type=int, default=512, help="width, a multiple of 8")
     parser.add_argument("--height", type=int, default=1024, help="height, a multiple of 8")
     parser.add_argument("--steps", type=int, default=25, help="denoising steps")
     parser.add_argument(
         "--out",
-        help="output folder name under outputs/; a timestamp is used when omitted",
+        help="output name under outputs/; a timestamp is used when omitted",
     )
     return parser
 
 
 def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if args.count <= 0:
+    if args.count is not None and args.count <= 0:
         parser.error("--count must be positive")
     if args.steps <= 0:
         parser.error("--steps must be positive")
@@ -73,6 +84,21 @@ def reserve_output_dir(
         candidate = root / f"{stamp}-{suffix}"
         suffix += 1
     candidate.mkdir(parents=True)
+    return candidate
+
+
+def reserve_output_file(
+    moment: datetime | None = None,
+    root: Path = OUTPUTS_DIR,
+    name: str | None = None,
+) -> Path:
+    stamp = name if name is not None else (moment or datetime.now()).strftime("%Y-%m-%d-%H%M%S")
+    root.mkdir(parents=True, exist_ok=True)
+    candidate = root / f"{stamp}.png"
+    suffix = 2
+    while candidate.exists():
+        candidate = root / f"{stamp}-{suffix}.png"
+        suffix += 1
     return candidate
 
 
@@ -117,6 +143,7 @@ def render_cards(
     entropy_bits: float,
     prepare=None,
     show_entropy: bool = True,
+    separate: bool = True,
 ) -> None:
     from src.render import render_cards as render
 
@@ -129,6 +156,7 @@ def render_cards(
         entropy_bits=entropy_bits,
         prepare=prepare,
         show_entropy=show_entropy,
+        separate=separate,
     )
 
 
@@ -143,18 +171,24 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     loader = start_pipeline(quiet_download=interactive)
     seed = read_seed(args.seed)
+    separate = args.count is not None
+    count = args.count if separate else len(TRIAD)
     try:
-        cards = cards_for(seed, args.count)
+        cards = cards_for(seed, count)
         negative_prompt = choose_negative()
     except LexiconError as error:
         print(f"scry: {error}", file=sys.stderr)
         raise SystemExit(2) from error
 
-    output_dir = reserve_output_dir(name=args.out)
-    jobs = [
-        (card, output_dir / card_filename(index, args.count))
-        for index, card in enumerate(cards, start=1)
-    ]
+    if separate:
+        output = reserve_output_dir(name=args.out)
+        jobs = [
+            (card, output / card_filename(index, count))
+            for index, card in enumerate(cards, start=1)
+        ]
+    else:
+        output = reserve_output_file(name=args.out)
+        jobs = [(card, output) for card in cards]
     render_cards(
         jobs,
         width=args.width,
@@ -164,5 +198,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         entropy_bits=estimate_seed_entropy(seed),
         prepare=loader.result,
         show_entropy=not interactive,
+        separate=separate,
     )
-    print(output_dir)
+    print(output)

@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from src.cli import build_parser, main, reserve_output_dir
+from src.cli import build_parser, main, reserve_output_dir, reserve_output_file
 from src.entropy import MIN_ENTROPY_BITS
 from src.model import REQUIRED_FILES, model_is_ready
 from src.progress import render_bar
@@ -32,7 +32,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     calls = Calls()
 
-    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits, prepare, show_entropy):
+    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits, prepare, show_entropy, separate):
         calls.append(
             {
                 "paths": [path for _card, path in jobs],
@@ -44,6 +44,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "negative_prompt": negative_prompt,
                 "entropy_bits": entropy_bits,
                 "show_entropy": show_entropy,
+                "separate": separate,
             }
         )
 
@@ -65,7 +66,12 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         calls.out = kwargs.get("name")
         return tmp_path
 
+    def reserve_file(*_args, **kwargs):
+        calls.out = kwargs.get("name")
+        return tmp_path / "sheet.png"
+
     monkeypatch.setattr("src.cli.reserve_output_dir", reserve)
+    monkeypatch.setattr("src.cli.reserve_output_file", reserve_file)
     return calls
 
 
@@ -73,7 +79,7 @@ def test_defaults() -> None:
     args = build_parser().parse_args([])
 
     assert args.seed is None
-    assert args.count == 3
+    assert args.count is None
     assert args.width == 512
     assert args.height == 1024
     assert args.steps == 25
@@ -97,7 +103,10 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
 
     assert len(fake_render) == 1
     call = fake_render[0]
-    assert [path.name for path in call["paths"]] == ["thesis.png", "antithesis.png", "synthesis.png"]
+    assert call["separate"] is False
+    assert len(call["paths"]) == 3
+    assert len({path.name for path in call["paths"]}) == 1
+    assert call["paths"][0].name == "sheet.png"
     assert len(set(call["prompts"])) == 3
     assert call["width"] == 512
     assert call["height"] == 1024
@@ -107,7 +116,7 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["show_entropy"] is True
     assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
-    assert captured.out.strip() == str(tmp_path)
+    assert captured.out.strip() == str(tmp_path / "sheet.png")
     assert captured.err == ""
 
 
@@ -129,6 +138,7 @@ def test_flags_override_defaults(fake_render) -> None:
     )
 
     call = fake_render[0]
+    assert call["separate"] is True
     assert [path.name for path in call["paths"]] == ["card_1.png"]
     assert call["width"] == 768
     assert call["height"] == 768
@@ -200,6 +210,32 @@ def test_output_directory_name(tmp_path) -> None:
     assert first.is_dir() and named.is_dir() and again.is_dir()
 
 
+def test_explicit_count_keeps_separate_cards(fake_render, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(1 << 255), "--count", "3", "--out", "reading"])
+
+    call = fake_render[0]
+    assert call["separate"] is True
+    assert [path.name for path in call["paths"]] == ["thesis.png", "antithesis.png", "synthesis.png"]
+    assert fake_render.out == "reading"
+    assert capsys.readouterr().out.strip() == str(tmp_path)
+
+
+def test_output_file_name(tmp_path) -> None:
+    moment = datetime(2026, 9, 22, 16, 50, 7)
+    first = reserve_output_file(moment, tmp_path)
+    first.touch()
+    second = reserve_output_file(moment, tmp_path)
+
+    assert first.name == "2026-09-22-165007.png"
+    assert second.name == "2026-09-22-165007-2.png"
+    named = reserve_output_file(name="reading", root=tmp_path)
+    named.touch()
+    again = reserve_output_file(name="reading", root=tmp_path)
+    assert named.name == "reading.png"
+    assert again.name == "reading-2.png"
+    assert first.is_file()
+
+
 def test_dimensions_must_be_multiples_of_eight() -> None:
     with pytest.raises(SystemExit):
         main([str(1 << 255), "--width", "513"])
@@ -223,7 +259,8 @@ def test_progress_bar_fills_pairs_from_the_top_left() -> None:
     assert all(line == "░" * 16 for line in lines[1:])
 
     two = render_bar(2, 64).split("\n")
-    assert two[0] == "████" + "░" * 12
+    assert two[0] == "██" + "░" * 14
+    assert two[1] == "██" + "░" * 14
     assert "▀" not in render_bar(3, 64)
     assert "▄" not in render_bar(3, 64)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.cards import BORDER, BOTTOM_BORDER, CORNER_RADIUS, TRIAD, card_filename, frame_card
+from src.cards import BORDER, BOTTOM_BORDER, CORNER_RADIUS, TRIAD, card_filename, frame_card, join_cards
 
 
 def test_three_cards_use_triad_names() -> None:
@@ -41,3 +41,21 @@ def test_frame_adds_black_border_and_centered_white_caption() -> None:
     center = sum(x for x, _y in white) / len(white)
     assert abs(center - framed.width / 2) < 8
     assert "THESIS" in TRIAD
+
+
+def test_three_cards_join_left_to_right_on_black() -> None:
+    Image = pytest.importorskip("PIL.Image")
+    colors = ((255, 0, 0), (0, 128, 0), (0, 0, 255))
+    cards = [frame_card(Image.new("RGB", (40, 20), color), caption) for color, caption in zip(colors, TRIAD)]
+
+    sheet = join_cards(cards)
+
+    width = cards[0].width
+    assert sheet.size == (width * 3 + BORDER * 2, cards[0].height + BORDER * 2)
+    assert sheet.getpixel((0, 0))[:3] == (0, 0, 0)
+    assert sheet.getpixel((BORDER - 1, BORDER))[:3] == (0, 0, 0)
+    for index, color in enumerate(colors):
+        origin = BORDER + index * width
+        assert sheet.getpixel((origin, BORDER))[:3] == (0, 0, 0)
+        assert sheet.getpixel((origin + width - 1, BORDER))[:3] == (0, 0, 0)
+        assert sheet.getpixel((origin + BORDER + CORNER_RADIUS, BORDER + BORDER + CORNER_RADIUS))[:3] == color

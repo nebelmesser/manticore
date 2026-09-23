@@ -4,6 +4,7 @@ from src.paths import FONT_PATH
 
 
 TRIAD = ("THESIS", "ANTITHESIS", "SYNTHESIS")
+DIVINATION_NAME = "divination.png"
 BORDER = 20
 BOTTOM_BORDER = 40
 CAPTION_SIZE = 28
@@ -56,3 +57,18 @@ def frame_card(image, caption: str):
         anchor="mm",
     )
     return framed
+
+
+def join_cards(cards):
+    """Place framed cards side by side, with one more black border around them."""
+
+    from PIL import Image
+
+    width = sum(card.width for card in cards)
+    height = max(card.height for card in cards)
+    sheet = Image.new("RGBA", (width + BORDER * 2, height + BORDER * 2), (0, 0, 0, 255))
+    offset = BORDER
+    for card in cards:
+        sheet.paste(card, (offset, BORDER))
+        offset += card.width
+    return sheet

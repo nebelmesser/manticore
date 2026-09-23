@@ -9,7 +9,7 @@ import warnings
 from pathlib import Path
 from typing import Callable, Sequence, TextIO
 
-from src.cards import TRIAD, frame_card
+from src.cards import DIVINATION_NAME, TRIAD, frame_card, join_cards
 from src.entropy import format_input_entropy
 from src.model import ensure_model
 from src.paths import MODEL_DIR
@@ -100,6 +100,41 @@ def _load_pipeline(model_dir: Path):
     return pipe, device
 
 
+def _card_record(
+    card: GeneratedPrompt,
+    *,
+    index: int,
+    sd_seed: int,
+    steps: int,
+    width: int,
+    height: int,
+    negative_prompt: str,
+    caption: str | None,
+) -> dict:
+    return {
+        "prompt": card.prompt,
+        "negative_prompt": negative_prompt,
+        "source_seed": card.seed,
+        "seed": sd_seed,
+        "steps": steps,
+        "guidance": GUIDANCE_SCALE,
+        "width": width,
+        "height": height,
+        "card": index,
+        "caption": caption,
+        "model": "stable-diffusion-2-1",
+    }
+
+
+def _write_png(image, path: Path, payload) -> None:
+    from PIL.PngImagePlugin import PngInfo
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    metadata = PngInfo()
+    metadata.add_text("sd_parameters", json.dumps(payload, ensure_ascii=False))
+    image.save(path, pnginfo=metadata)
+
+
 def _save_card(
     image,
     path: Path,
@@ -111,36 +146,27 @@ def _save_card(
     width: int,
     height: int,
     negative_prompt: str,
-) -> None:
-    from PIL.PngImagePlugin import PngInfo
-
+):
     caption = path.stem.upper()
     if caption in TRIAD:
         image = frame_card(image, caption)
     else:
         caption = None
-    path.parent.mkdir(parents=True, exist_ok=True)
-    metadata = PngInfo()
-    metadata.add_text(
-        "sd_parameters",
-        json.dumps(
-            {
-                "prompt": card.prompt,
-                "negative_prompt": negative_prompt,
-                "source_seed": card.seed,
-                "seed": sd_seed,
-                "steps": steps,
-                "guidance": GUIDANCE_SCALE,
-                "width": width,
-                "height": height,
-                "card": index,
-                "caption": caption,
-                "model": "stable-diffusion-2-1",
-            },
-            ensure_ascii=False,
+    _write_png(
+        image,
+        path,
+        _card_record(
+            card,
+            index=index,
+            sd_seed=sd_seed,
+            steps=steps,
+            width=width,
+            height=height,
+            negative_prompt=negative_prompt,
+            caption=caption,
         ),
     )
-    image.save(path, pnginfo=metadata)
+    return image
 
 
 def render_cards(
@@ -155,6 +181,7 @@ def render_cards(
     progress: TextIO | None = None,
     prepare: Callable[[], tuple] | None = None,
     show_entropy: bool = True,
+    separate: bool = True,
 ) -> None:
     import torch
 
@@ -172,6 +199,8 @@ def render_cards(
             pipe, device = _load_pipeline(model_dir)
         else:
             pipe, device = prepare()
+        saved = []
+        records = []
         for image_index, (card, path) in enumerate(jobs):
             sd_seed = card.sd_seed
             generator = torch.Generator(device="cpu").manual_seed(sd_seed)
@@ -192,18 +221,39 @@ def render_cards(
                     callback_on_step_end=on_step,
                     callback_on_step_end_tensor_inputs=[],
                 ).images[0]
-            _save_card(
-                image,
-                path,
-                card,
-                index=image_index + 1,
-                sd_seed=sd_seed,
-                steps=steps,
-                width=width,
-                height=height,
-                negative_prompt=negative_prompt,
-            )
+            if separate:
+                image = _save_card(
+                    image,
+                    path,
+                    card,
+                    index=image_index + 1,
+                    sd_seed=sd_seed,
+                    steps=steps,
+                    width=width,
+                    height=height,
+                    negative_prompt=negative_prompt,
+                )
+            elif len(jobs) == len(TRIAD):
+                caption = TRIAD[image_index]
+                image = frame_card(image, caption)
+                records.append(
+                    _card_record(
+                        card,
+                        index=image_index + 1,
+                        sd_seed=sd_seed,
+                        steps=steps,
+                        width=width,
+                        height=height,
+                        negative_prompt=negative_prompt,
+                        caption=caption,
+                    )
+                )
+            saved.append(image)
             bar.set_done((image_index + 1) * steps)
+        if separate and len(saved) == len(TRIAD):
+            join_cards(saved).save(jobs[0][1].parent / DIVINATION_NAME)
+        elif not separate:
+            _write_png(join_cards(saved), jobs[0][1], {"cards": records})
         bar.finish()
     finally:
         bar.close()

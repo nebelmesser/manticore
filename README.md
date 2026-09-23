@@ -22,20 +22,15 @@ SD 2.1 excels thanks to its "imperfections": its flawed understanding of the wor
 Without an argument, scry accepts entropy immediately and loads the model at the same time.
 Type any entropy and press Enter to start. A seed argument shorter than 256 bits is refused.
 
-The default is three cards, 512×1024, 25 steps. Generation shows the input
-entropy above one progress bar for all images. Files land in `outputs/YYYY-MM-DD-HHMMSS/`, or in
-`outputs/<name>/` when `--out` is set. Three cards are
-saved as `thesis.png`, `antithesis.png`, and `synthesis.png`. Each one has a
-black border — 20px around the picture and 40px along the bottom — and a
-centered white Vidaloka caption. Any other count is saved as `card_1.png`,
-`card_2.png`, and so on.
+The default is three cards, 512×1024, 25 steps, written as one image at `outputs/YYYY-MM-DD-HHMMSS.png`, or `outputs/<name>.png` when `--out` is set.
+Generation shows the input entropy above one progress bar for all images.
+
+By default cards are saved as one composite image. Pass `--count` to save them in a folder instead: three cards become `thesis.png`, `antithesis.png`, `synthesis.png`, and `divination.png`; any other count is `card_1.png`, `card_2.png`, and so on.
 
 ```bash
 ./scry "…" --count 3 --width 512 --height 1024 --steps 25 --out reading
 ```
 
-The negative prompt is a line from `negative.txt`. One line is used as written.
-Several lines contribute one of them at random.
+The negative prompt is a line from `negative.txt`. One line is used as written. Several lines contribute one of them at random.
 
-The first run creates `.venv`, installs dependencies, and downloads SD 2.1
-if the weights are not already present, showing download progress.
+The first run creates `.venv`, installs dependencies, and downloads SD 2.1 if the weights are not already present, showing download progress.
