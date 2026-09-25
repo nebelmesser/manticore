@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 import threading
 import warnings
@@ -13,7 +14,7 @@ from src.cards import DIVINATION_NAME, TRIAD, frame_card, join_cards
 from src.entropy import format_input_entropy
 from src.model import SD21_REPO, ensure_model
 from src.paths import MODEL_DIR
-from src.progress import ProgressBar
+from src.progress import NARROW, VIDEO, ProgressBar
 from src.prompt import GeneratedPrompt
 
 
@@ -212,6 +213,47 @@ def _save_card(
     return image
 
 
+def denoise_passes(steps: int, *, video: bool) -> int:
+    """UNet steps for one card. Video frames are full runs of 2..steps."""
+
+    if not video or steps < 2:
+        return steps
+    return steps * (steps + 1) // 2 - 1
+
+
+def _show_panel(image, caption: str | None):
+    if caption is None:
+        return image
+    return frame_card(image, caption)
+
+
+def _captions(count: int) -> tuple[str | None, ...]:
+    if count == len(TRIAD):
+        return TRIAD
+    return tuple(None for _ in range(count))
+
+
+def step_sheets(card_steps: Sequence[Sequence[Path]], dest: Path, captions: Sequence[str | None]) -> list[Path]:
+    """Join one finished step-count of every card into one triptych frame."""
+
+    from PIL import Image
+
+    dest.mkdir(parents=True, exist_ok=True)
+    length = max(len(steps) for steps in card_steps)
+    sheets = []
+    for step in range(length):
+        panels = []
+        for index, steps in enumerate(card_steps):
+            image = Image.open(steps[min(step, len(steps) - 1)])
+            caption = captions[index] if index < len(captions) else None
+            panels.append(_show_panel(image, caption))
+        sheet = panels[0] if len(panels) == 1 else join_cards(panels)
+        path = dest / f"{step:05d}.png"
+        sheet.convert("RGB").save(path)
+        sheets.append(path)
+    return sheets
+
+
 def render_cards(
     jobs: Sequence[tuple[GeneratedPrompt, Path]],
     *,
@@ -225,14 +267,22 @@ def render_cards(
     prepare: Callable[[], tuple] | None = None,
     show_entropy: bool = True,
     separate: bool = True,
+    video_fps: int | None = None,
 ) -> None:
     import torch
 
+    from src.video import frames_directory, require_ffmpeg, reset_directory, video_destination, write_ping_pong_video
+
     stream = progress if progress is not None else sys.stderr
+    frames_dir: Path | None = None
+    if video_fps is not None:
+        require_ffmpeg()
+        frames_dir = reset_directory(frames_directory(video_destination(jobs, separate)))
     if show_entropy:
         stream.write("\r" + format_input_entropy(entropy_bits))
         stream.flush()
-    bar = ProgressBar(len(jobs) * steps, stream)
+    passes = denoise_passes(steps, video=video_fps is not None)
+    bar = ProgressBar(len(jobs) * passes, stream, VIDEO if video_fps is not None else NARROW)
     pipe = None
     device = "cpu"
     try:
@@ -244,26 +294,52 @@ def render_cards(
             pipe, device = prepare()
         saved = []
         records = []
+        card_steps: list[list[Path]] = []
+        captions = _captions(len(jobs))
         for image_index, (card, path) in enumerate(jobs):
             sd_seed = card.sd_seed
-            generator = torch.Generator(device="cpu").manual_seed(sd_seed)
+            card_frames: list[Path] = []
+            panel_dir = None
+            if frames_dir is not None:
+                panel_name = captions[image_index].lower() if captions[image_index] else f"{image_index:02d}"
+                panel_dir = frames_dir / panel_name
+                panel_dir.mkdir()
 
-            def on_step(_pipe, step, _timestep, callback_kwargs, image_index=image_index):
-                bar.set_done(image_index * steps + step + 1)
-                return callback_kwargs
+            def generate(step_count: int, done_base: int):
+                def on_step(_pipe, step, _timestep, callback_kwargs, done_base=done_base):
+                    bar.set_done(done_base + step + 1)
+                    return callback_kwargs
 
-            with torch.inference_mode():
-                image = pipe(
-                    prompt=card.prompt,
-                    negative_prompt=negative_prompt or None,
-                    num_inference_steps=steps,
-                    guidance_scale=GUIDANCE_SCALE,
-                    width=width,
-                    height=height,
-                    generator=generator,
-                    callback_on_step_end=on_step,
-                    callback_on_step_end_tensor_inputs=[],
-                ).images[0]
+                generator = torch.Generator(device="cpu").manual_seed(sd_seed)
+                with torch.inference_mode():
+                    return pipe(
+                        prompt=card.prompt,
+                        negative_prompt=negative_prompt or None,
+                        num_inference_steps=step_count,
+                        guidance_scale=GUIDANCE_SCALE,
+                        width=width,
+                        height=height,
+                        generator=generator,
+                        callback_on_step_end=on_step,
+                        callback_on_step_end_tensor_inputs=[],
+                    ).images[0]
+
+            done_base = image_index * passes
+            if panel_dir is None:
+                image = generate(steps, done_base)
+            else:
+                ran = 0
+                image = None
+                for index, step_count in enumerate(range(2, steps + 1)):
+                    image = generate(step_count, done_base + ran)
+                    frame_path = panel_dir / f"{index:05d}.png"
+                    image.convert("RGB").save(frame_path)
+                    card_frames.append(frame_path)
+                    ran += step_count
+                if image is None:
+                    image = generate(steps, done_base)
+                else:
+                    card_steps.append(card_frames)
             if separate:
                 image = _save_card(
                     image,
@@ -292,11 +368,20 @@ def render_cards(
                     )
                 )
             saved.append(image)
-            bar.set_done((image_index + 1) * steps)
+            bar.set_done((image_index + 1) * passes)
         if separate and len(saved) == len(TRIAD):
             join_cards(saved).save(jobs[0][1].parent / DIVINATION_NAME)
         elif not separate:
             _write_png(join_cards(saved), jobs[0][1], {"cards": records})
+        if card_steps and video_fps is not None:
+            sheets_dir = video_destination(jobs, separate).with_name(
+                f"{video_destination(jobs, separate).stem}-sheets"
+            )
+            sheets = step_sheets(card_steps, sheets_dir, captions)
+            try:
+                write_ping_pong_video(sheets, video_destination(jobs, separate), video_fps)
+            finally:
+                shutil.rmtree(sheets_dir, ignore_errors=True)
         bar.finish()
     finally:
         bar.close()

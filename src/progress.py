@@ -4,18 +4,13 @@ import sys
 from typing import TextIO
 
 
-CHAR_COLUMNS = 16
-CHAR_ROWS = 8
 PAIR_WIDTH = 2
-GRID_COLUMNS = CHAR_COLUMNS // PAIR_WIDTH
-GRID_ROWS = CHAR_ROWS
-CELL_COUNT = GRID_COLUMNS * GRID_ROWS
 
 _EMPTY = "░"
 _FULL = "█"
 
 
-def _hilbert_path(order: int = 4) -> tuple[tuple[int, int], ...]:
+def _hilbert_path(order: int) -> tuple[tuple[int, int], ...]:
     """Visit every cell of a 2^order square along a Hilbert curve."""
 
     side = 1 << order
@@ -35,9 +30,6 @@ def _hilbert_path(order: int = 4) -> tuple[tuple[int, int], ...]:
     return tuple(points)
 
 
-HILBERT_PATH = _hilbert_path(3)
-
-
 def _scaled(done: int, total: int, units: int) -> int:
     if total <= 0 or done >= total:
         return units
@@ -45,32 +37,55 @@ def _scaled(done: int, total: int, units: int) -> int:
     return round(units * fraction)
 
 
-def render_bar(done: int, total: int) -> str:
-    """Draw a 16×8 Hilbert field. Each curve step fills two characters."""
+class Field:
+    """A Hilbert field. Each cell is two characters wide and one row tall."""
 
-    filled = _scaled(done, total, CELL_COUNT)
-    cells = [[False] * GRID_COLUMNS for _ in range(GRID_ROWS)]
-    for index, (x, y) in enumerate(HILBERT_PATH):
-        if index >= filled:
-            break
-        cells[y][x] = True
+    def __init__(self, columns: int, rows: int) -> None:
+        if rows < 1 or rows & (rows - 1) or columns != rows * PAIR_WIDTH:
+            raise ValueError("field must be a Hilbert square drawn two characters per cell")
+        self.columns = columns
+        self.rows = rows
+        self.path = _hilbert_path(rows.bit_length() - 1)
 
-    lines = []
-    for row in range(CHAR_ROWS):
-        line = "".join(
-            (_FULL if cells[row][column] else _EMPTY) * PAIR_WIDTH
-            for column in range(GRID_COLUMNS)
-        )
-        lines.append(line)
-    return "\n".join(lines)
+    def scaled(self, factor: int) -> Field:
+        return Field(self.columns * factor, self.rows * factor)
+
+    def render(self, done: int, total: int) -> str:
+        cells_across = self.columns // PAIR_WIDTH
+        filled = _scaled(done, total, len(self.path))
+        cells = [[False] * cells_across for _ in range(self.rows)]
+        for index, (x, y) in enumerate(self.path):
+            if index >= filled:
+                break
+            cells[y][x] = True
+
+        lines = []
+        for row in range(self.rows):
+            line = "".join(
+                (_FULL if cells[row][column] else _EMPTY) * PAIR_WIDTH
+                for column in range(cells_across)
+            )
+            lines.append(line)
+        return "\n".join(lines)
+
+
+NARROW = Field(16, 8)
+VIDEO = NARROW.scaled(2)
+
+
+def render_bar(done: int, total: int, field: Field = NARROW) -> str:
+    """Draw a Hilbert field. Each curve step fills two characters."""
+
+    return field.render(done, total)
 
 
 class ProgressBar:
     """One in-place Hilbert field. It prints no other text."""
 
-    def __init__(self, total: int, stream: TextIO | None = None) -> None:
+    def __init__(self, total: int, stream: TextIO | None = None, field: Field = NARROW) -> None:
         self.total = total
         self.done = 0
+        self.field = field
         self.stream = stream if stream is not None else sys.stderr
         self._closed = False
         self._drawn = False
@@ -82,8 +97,8 @@ class ProgressBar:
 
     def draw(self) -> None:
         if self._drawn:
-            self.stream.write(f"\033[{CHAR_ROWS - 1}A")
-        frame = render_bar(self.done, self.total)
+            self.stream.write(f"\033[{self.field.rows - 1}A")
+        frame = self.field.render(self.done, self.total)
         self.stream.write("\r" + frame.replace("\n", "\n\r"))
         self.stream.flush()
         self._drawn = True

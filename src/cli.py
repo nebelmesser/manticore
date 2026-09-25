@@ -28,7 +28,7 @@ from src.seeds import card_parts, parse_seed
 
 class _DefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def _get_help_string(self, action: argparse.Action) -> str:
-        if action.dest == "count":
+        if action.dest in {"count", "video"}:
             return action.help
         return super()._get_help_string(action)
 
@@ -53,6 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--height", type=int, default=1024, help="height, a multiple of 8")
     parser.add_argument("--steps", type=int, default=25, help="denoising steps")
     parser.add_argument(
+        "--video",
+        nargs="?",
+        const=10,
+        type=int,
+        metavar="FPS",
+        help="write an mp4 of every triptych step, then back to the start; optional FPS, default 10",
+    )
+    parser.add_argument(
         "--out",
         help="output name under outputs/; a timestamp is used when omitted",
     )
@@ -64,6 +72,8 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error("--count must be positive")
     if args.steps <= 0:
         parser.error("--steps must be positive")
+    if args.video is not None and args.video <= 0:
+        parser.error("--video FPS must be positive")
     for name in ("width", "height"):
         value = getattr(args, name)
         if value <= 0 or value % 8:
@@ -144,6 +154,7 @@ def render_cards(
     prepare=None,
     show_entropy: bool = True,
     separate: bool = True,
+    video_fps: int | None = None,
 ) -> None:
     from src.render import render_cards as render
 
@@ -157,6 +168,7 @@ def render_cards(
         prepare=prepare,
         show_entropy=show_entropy,
         separate=separate,
+        video_fps=video_fps,
     )
 
 
@@ -214,5 +226,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
         prepare=loader.result,
         show_entropy=not interactive,
         separate=separate,
+        video_fps=args.video,
     )
     print(output)
+    if args.video is not None:
+        from src.video import video_destination
+
+        print(video_destination(jobs, separate))

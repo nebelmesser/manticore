@@ -9,7 +9,7 @@ import pytest
 from src.cli import build_parser, main, reserve_output_dir, reserve_output_file
 from src.entropy import MIN_ENTROPY_BITS
 from src.model import REQUIRED_FILES, model_is_ready
-from src.progress import render_bar
+from src.progress import NARROW, VIDEO, render_bar
 from src.prompt import FRAGMENT_COUNT, estimate_seed_entropy
 
 
@@ -32,7 +32,19 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     calls = Calls()
 
-    def render(jobs, *, width, height, steps, negative_prompt, entropy_bits, prepare, show_entropy, separate):
+    def render(
+        jobs,
+        *,
+        width,
+        height,
+        steps,
+        negative_prompt,
+        entropy_bits,
+        prepare,
+        show_entropy,
+        separate,
+        video_fps=None,
+    ):
         calls.append(
             {
                 "paths": [path for _card, path in jobs],
@@ -45,6 +57,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "entropy_bits": entropy_bits,
                 "show_entropy": show_entropy,
                 "separate": separate,
+                "video_fps": video_fps,
             }
         )
 
@@ -85,6 +98,7 @@ def test_defaults() -> None:
     assert args.height == 1024
     assert args.steps == 25
     assert args.out is None
+    assert args.video is None
     assert not hasattr(args, "negative")
 
 
@@ -169,6 +183,7 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["negative_prompt"] == "text letters label title panels comics captions subtitle"
     assert call["entropy_bits"] == 256.0
     assert call["show_entropy"] is True
+    assert call["video_fps"] is None
     assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
     assert captured.out.strip() == str(tmp_path / "sheet.png")
@@ -291,6 +306,34 @@ def test_output_file_name(tmp_path) -> None:
     assert first.is_file()
 
 
+def test_video_flag_passes_fps(fake_render, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(1 << 255), "--video", "12"])
+
+    assert fake_render[0]["video_fps"] == 12
+    assert capsys.readouterr().out.splitlines() == [
+        str(tmp_path / "sheet.png"),
+        str(tmp_path / "sheet.mp4"),
+    ]
+
+
+def test_video_defaults_to_ten_fps(fake_render) -> None:
+    main([str(1 << 255), "--video"])
+
+    assert fake_render[0]["video_fps"] == 10
+
+
+def test_video_inside_a_count_folder(fake_render, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+    main([str(1 << 255), "--count", "3", "--video"])
+
+    assert fake_render[0]["video_fps"] == 10
+    assert capsys.readouterr().out.splitlines() == [str(tmp_path), str(tmp_path / "divination.mp4")]
+
+
+def test_video_fps_must_be_positive() -> None:
+    with pytest.raises(SystemExit):
+        main([str(1 << 255), "--video", "0"])
+
+
 def test_dimensions_must_be_multiples_of_eight() -> None:
     with pytest.raises(SystemExit):
         main([str(1 << 255), "--width", "513"])
@@ -318,6 +361,22 @@ def test_progress_bar_fills_pairs_from_the_top_left() -> None:
     assert two[1] == "██" + "░" * 14
     assert "▀" not in render_bar(3, 64)
     assert "▄" not in render_bar(3, 64)
+
+
+def test_video_field_is_twice_the_narrow_one_on_each_side() -> None:
+    assert (NARROW.columns, NARROW.rows) == (16, 8)
+    assert (VIDEO.columns, VIDEO.rows) == (NARROW.columns * 2, NARROW.rows * 2)
+
+    empty = render_bar(0, 325, VIDEO).split("\n")
+    assert len(empty) == VIDEO.rows
+    assert all(line == "░" * VIDEO.columns for line in empty)
+
+    started = render_bar(1, len(VIDEO.path), VIDEO).split("\n")
+    assert started[0] == "██" + "░" * (VIDEO.columns - 2)
+    assert started[1] == "░" * VIDEO.columns
+
+    full = render_bar(len(VIDEO.path), len(VIDEO.path), VIDEO)
+    assert full.split("\n") == ["█" * VIDEO.columns] * VIDEO.rows
 
 
 def test_model_ready_requires_every_file(tmp_path) -> None:
