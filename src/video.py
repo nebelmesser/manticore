@@ -8,12 +8,12 @@ from typing import Sequence
 
 
 def ping_pong(frames: Sequence[Path]) -> list[Path]:
-    """Play the frames forward, then back to the first without repeating the last."""
+    """Play forward, then back toward the start, stopping before the first frame."""
 
     ordered = list(frames)
-    if len(ordered) < 2:
+    if len(ordered) < 3:
         return ordered
-    return ordered + ordered[-2::-1]
+    return ordered + ordered[-2:0:-1]
 
 
 def video_destination(jobs: Sequence[tuple[object, Path]], separate: bool) -> Path:
@@ -44,9 +44,9 @@ def require_ffmpeg() -> str:
     return ffmpeg
 
 
-def write_ping_pong_video(frames: Sequence[Path], dest: Path, fps: int) -> None:
+def write_ping_pong_video(frames: Sequence[Path], dest: Path, fps: int, *, forward_only: bool = False) -> None:
     ffmpeg = require_ffmpeg()
-    ordered = ping_pong(frames)
+    ordered = list(frames) if forward_only else ping_pong(frames)
     sequence = dest.with_name(f"{dest.stem}-sequence")
     sequence.mkdir(parents=True)
     try:

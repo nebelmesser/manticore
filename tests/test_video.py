@@ -18,15 +18,14 @@ def test_video_reruns_every_step_count() -> None:
     assert denoise_passes(1, video=True) == 1
 
 
-def test_ping_pong_returns_to_the_start() -> None:
+def test_ping_pong_stops_before_the_first_frame() -> None:
     assert ping_pong([]) == []
-    assert [path.name for path in ping_pong([Path("a.png")])] == ["a.png"]
+    assert [path.name for path in ping_pong([Path("a.png"), Path("b.png")])] == ["a.png", "b.png"]
     assert [path.name for path in ping_pong([Path("a.png"), Path("b.png"), Path("c.png")])] == [
         "a.png",
         "b.png",
         "c.png",
         "b.png",
-        "a.png",
     ]
 
 
@@ -90,7 +89,7 @@ def test_ping_pong_video_plays_forward_and_back(tmp_path) -> None:
         pytest.skip("ffmpeg is required")
     Image = pytest.importorskip("PIL.Image")
     frames = []
-    for index, color in enumerate(("red", "green")):
+    for index, color in enumerate(("red", "green", "blue")):
         path = tmp_path / f"{index}.png"
         Image.new("RGB", (16, 16), color).save(path)
         frames.append(path)
@@ -118,4 +117,4 @@ def test_ping_pong_video_plays_forward_and_back(tmp_path) -> None:
         capture_output=True,
         text=True,
     )
-    assert counted.stdout.strip() == "3"
+    assert counted.stdout.strip() == "4"

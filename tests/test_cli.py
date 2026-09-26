@@ -44,6 +44,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         show_entropy,
         separate,
         video_fps=None,
+        forward_only=False,
     ):
         calls.append(
             {
@@ -58,6 +59,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "show_entropy": show_entropy,
                 "separate": separate,
                 "video_fps": video_fps,
+                "forward_only": forward_only,
             }
         )
 
@@ -99,6 +101,7 @@ def test_defaults() -> None:
     assert args.steps == 25
     assert args.out is None
     assert args.video is None
+    assert args.forward_only is False
     assert not hasattr(args, "negative")
 
 
@@ -329,6 +332,18 @@ def test_video_inside_a_count_folder(fake_render, tmp_path, capsys: pytest.Captu
     assert capsys.readouterr().out.splitlines() == [str(tmp_path), str(tmp_path / "divination.mp4")]
 
 
+def test_forward_only_skips_the_return(fake_render) -> None:
+    main([str(1 << 255), "--video", "--forward-only"])
+
+    assert fake_render[0]["video_fps"] == 10
+    assert fake_render[0]["forward_only"] is True
+
+
+def test_forward_only_needs_video() -> None:
+    with pytest.raises(SystemExit):
+        main([str(1 << 255), "--forward-only"])
+
+
 def test_video_fps_must_be_positive() -> None:
     with pytest.raises(SystemExit):
         main([str(1 << 255), "--video", "0"])
@@ -351,16 +366,20 @@ def test_progress_bar_is_only_a_bar() -> None:
     assert "card" not in finished
 
 
-def test_progress_bar_fills_pairs_from_the_top_left() -> None:
-    lines = render_bar(1, 64).split("\n")
-    assert lines[0] == "██" + "░" * 14
+def test_progress_bar_fills_one_character_at_a_time() -> None:
+    lines = render_bar(1, 128).split("\n")
+    assert lines[0] == "█" + "░" * 15
     assert all(line == "░" * 16 for line in lines[1:])
 
-    two = render_bar(2, 64).split("\n")
-    assert two[0] == "██" + "░" * 14
-    assert two[1] == "██" + "░" * 14
-    assert "▀" not in render_bar(3, 64)
-    assert "▄" not in render_bar(3, 64)
+    pair = render_bar(2, 128).split("\n")
+    assert pair[0] == "██" + "░" * 14
+    assert all(line == "░" * 16 for line in pair[1:])
+
+    third = render_bar(3, 128).split("\n")
+    assert third[0] == "██" + "░" * 14
+    assert third[1] == "█" + "░" * 15
+    assert "▀" not in "".join(third)
+    assert "▄" not in "".join(third)
 
 
 def test_video_field_is_twice_the_narrow_one_on_each_side() -> None:
@@ -371,8 +390,9 @@ def test_video_field_is_twice_the_narrow_one_on_each_side() -> None:
     assert len(empty) == VIDEO.rows
     assert all(line == "░" * VIDEO.columns for line in empty)
 
-    started = render_bar(1, len(VIDEO.path), VIDEO).split("\n")
-    assert started[0] == "██" + "░" * (VIDEO.columns - 2)
+    glyphs = len(VIDEO.path) * 2
+    started = render_bar(1, glyphs, VIDEO).split("\n")
+    assert started[0] == "█" + "░" * (VIDEO.columns - 1)
     assert started[1] == "░" * VIDEO.columns
 
     full = render_bar(len(VIDEO.path), len(VIDEO.path), VIDEO)

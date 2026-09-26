@@ -51,22 +51,12 @@ class Field:
         return Field(self.columns * factor, self.rows * factor)
 
     def render(self, done: int, total: int) -> str:
-        cells_across = self.columns // PAIR_WIDTH
-        filled = _scaled(done, total, len(self.path))
-        cells = [[False] * cells_across for _ in range(self.rows)]
-        for index, (x, y) in enumerate(self.path):
-            if index >= filled:
-                break
-            cells[y][x] = True
-
-        lines = []
-        for row in range(self.rows):
-            line = "".join(
-                (_FULL if cells[row][column] else _EMPTY) * PAIR_WIDTH
-                for column in range(cells_across)
-            )
-            lines.append(line)
-        return "\n".join(lines)
+        glyphs = [[_EMPTY] * self.columns for _ in range(self.rows)]
+        filled = _scaled(done, total, len(self.path) * PAIR_WIDTH)
+        for index in range(filled):
+            x, y = self.path[index // PAIR_WIDTH]
+            glyphs[y][x * PAIR_WIDTH + index % PAIR_WIDTH] = _FULL
+        return "\n".join("".join(row) for row in glyphs)
 
 
 NARROW = Field(16, 8)
@@ -74,7 +64,7 @@ VIDEO = NARROW.scaled(2)
 
 
 def render_bar(done: int, total: int, field: Field = NARROW) -> str:
-    """Draw a Hilbert field. Each curve step fills two characters."""
+    """Draw a Hilbert field. Each curve step fills one character."""
 
     return field.render(done, total)
 

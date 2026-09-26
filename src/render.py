@@ -268,6 +268,7 @@ def render_cards(
     show_entropy: bool = True,
     separate: bool = True,
     video_fps: int | None = None,
+    forward_only: bool = False,
 ) -> None:
     import torch
 
@@ -296,57 +297,53 @@ def render_cards(
         records = []
         card_steps: list[list[Path]] = []
         captions = _captions(len(jobs))
-        for image_index, (card, path) in enumerate(jobs):
-            sd_seed = card.sd_seed
-            card_frames: list[Path] = []
-            panel_dir = None
-            if frames_dir is not None:
+        progress_done = 0
+
+        def generate(card: GeneratedPrompt, step_count: int):
+            nonlocal progress_done
+            done_base = progress_done
+
+            def on_step(_pipe, step, _timestep, callback_kwargs, done_base=done_base):
+                bar.set_done(done_base + step + 1)
+                return callback_kwargs
+
+            generator = torch.Generator(device="cpu").manual_seed(card.sd_seed)
+            with torch.inference_mode():
+                image = pipe(
+                    prompt=card.prompt,
+                    negative_prompt=negative_prompt or None,
+                    num_inference_steps=step_count,
+                    guidance_scale=GUIDANCE_SCALE,
+                    width=width,
+                    height=height,
+                    generator=generator,
+                    callback_on_step_end=on_step,
+                    callback_on_step_end_tensor_inputs=[],
+                ).images[0]
+            progress_done += step_count
+            return image
+
+        full_frames: list[Path] = []
+        raw_images = []
+        for image_index, (card, _path) in enumerate(jobs):
+            image = generate(card, steps)
+            raw_images.append(image)
+            if frames_dir is not None and steps >= 2:
                 panel_name = captions[image_index].lower() if captions[image_index] else f"{image_index:02d}"
                 panel_dir = frames_dir / panel_name
                 panel_dir.mkdir()
-
-            def generate(step_count: int, done_base: int):
-                def on_step(_pipe, step, _timestep, callback_kwargs, done_base=done_base):
-                    bar.set_done(done_base + step + 1)
-                    return callback_kwargs
-
-                generator = torch.Generator(device="cpu").manual_seed(sd_seed)
-                with torch.inference_mode():
-                    return pipe(
-                        prompt=card.prompt,
-                        negative_prompt=negative_prompt or None,
-                        num_inference_steps=step_count,
-                        guidance_scale=GUIDANCE_SCALE,
-                        width=width,
-                        height=height,
-                        generator=generator,
-                        callback_on_step_end=on_step,
-                        callback_on_step_end_tensor_inputs=[],
-                    ).images[0]
-
-            done_base = image_index * passes
-            if panel_dir is None:
-                image = generate(steps, done_base)
-            else:
-                ran = 0
-                image = None
-                for index, step_count in enumerate(range(2, steps + 1)):
-                    image = generate(step_count, done_base + ran)
-                    frame_path = panel_dir / f"{index:05d}.png"
-                    image.convert("RGB").save(frame_path)
-                    card_frames.append(frame_path)
-                    ran += step_count
-                if image is None:
-                    image = generate(steps, done_base)
-                else:
-                    card_steps.append(card_frames)
+                frame_path = panel_dir / f"{steps - 2:05d}.png"
+                image.convert("RGB").save(frame_path)
+                full_frames.append(frame_path)
+        for image_index, (card, path) in enumerate(jobs):
+            image = raw_images[image_index]
             if separate:
                 image = _save_card(
                     image,
                     path,
                     card,
                     index=image_index + 1,
-                    sd_seed=sd_seed,
+                    sd_seed=card.sd_seed,
                     steps=steps,
                     width=width,
                     height=height,
@@ -359,7 +356,7 @@ def render_cards(
                     _card_record(
                         card,
                         index=image_index + 1,
-                        sd_seed=sd_seed,
+                        sd_seed=card.sd_seed,
                         steps=steps,
                         width=width,
                         height=height,
@@ -368,18 +365,34 @@ def render_cards(
                     )
                 )
             saved.append(image)
-            bar.set_done((image_index + 1) * passes)
         if separate and len(saved) == len(TRIAD):
             join_cards(saved).save(jobs[0][1].parent / DIVINATION_NAME)
         elif not separate:
             _write_png(join_cards(saved), jobs[0][1], {"cards": records})
+        if full_frames:
+            for image_index, (card, _path) in enumerate(jobs):
+                panel_dir = full_frames[image_index].parent
+                card_frames = []
+                for index, step_count in enumerate(range(2, steps)):
+                    preview = generate(card, step_count)
+                    frame_path = panel_dir / f"{index:05d}.png"
+                    preview.convert("RGB").save(frame_path)
+                    card_frames.append(frame_path)
+                card_frames.append(full_frames[image_index])
+                card_steps.append(card_frames)
+            bar.set_done(progress_done)
         if card_steps and video_fps is not None:
             sheets_dir = video_destination(jobs, separate).with_name(
                 f"{video_destination(jobs, separate).stem}-sheets"
             )
             sheets = step_sheets(card_steps, sheets_dir, captions)
             try:
-                write_ping_pong_video(sheets, video_destination(jobs, separate), video_fps)
+                write_ping_pong_video(
+                    sheets,
+                    video_destination(jobs, separate),
+                    video_fps,
+                    forward_only=forward_only,
+                )
             finally:
                 shutil.rmtree(sheets_dir, ignore_errors=True)
         bar.finish()

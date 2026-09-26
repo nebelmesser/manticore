@@ -58,7 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
         const=10,
         type=int,
         metavar="FPS",
-        help="write an mp4 of every triptych step, then back to the start; optional FPS, default 10",
+        help="write an mp4 of every triptych step, then back toward the start; optional FPS, default 10",
+    )
+    parser.add_argument(
+        "--forward-only",
+        action="store_true",
+        help="play the animation forward only",
     )
     parser.add_argument(
         "--out",
@@ -74,6 +79,8 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error("--steps must be positive")
     if args.video is not None and args.video <= 0:
         parser.error("--video FPS must be positive")
+    if args.forward_only and args.video is None:
+        parser.error("--forward-only needs --video")
     for name in ("width", "height"):
         value = getattr(args, name)
         if value <= 0 or value % 8:
@@ -155,6 +162,7 @@ def render_cards(
     show_entropy: bool = True,
     separate: bool = True,
     video_fps: int | None = None,
+    forward_only: bool = False,
 ) -> None:
     from src.render import render_cards as render
 
@@ -169,6 +177,7 @@ def render_cards(
         show_entropy=show_entropy,
         separate=separate,
         video_fps=video_fps,
+        forward_only=forward_only,
     )
 
 
@@ -227,6 +236,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         show_entropy=not interactive,
         separate=separate,
         video_fps=args.video,
+        forward_only=args.forward_only,
     )
     print(output)
     if args.video is not None:
