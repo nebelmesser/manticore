@@ -268,11 +268,10 @@ def render_cards(
     show_entropy: bool = True,
     separate: bool = True,
     video_fps: int | None = None,
-    forward_only: bool = False,
 ) -> None:
     import torch
 
-    from src.video import frames_directory, require_ffmpeg, reset_directory, video_destination, write_ping_pong_video
+    from src.video import frames_directory, require_ffmpeg, reset_directory, video_destination, write_video
 
     stream = progress if progress is not None else sys.stderr
     frames_dir: Path | None = None
@@ -387,11 +386,10 @@ def render_cards(
             )
             sheets = step_sheets(card_steps, sheets_dir, captions)
             try:
-                write_ping_pong_video(
+                write_video(
                     sheets,
                     video_destination(jobs, separate),
                     video_fps,
-                    forward_only=forward_only,
                 )
             finally:
                 shutil.rmtree(sheets_dir, ignore_errors=True)

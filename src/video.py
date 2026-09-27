@@ -7,15 +7,6 @@ from pathlib import Path
 from typing import Sequence
 
 
-def ping_pong(frames: Sequence[Path]) -> list[Path]:
-    """Play forward, then back toward the start, stopping before the first frame."""
-
-    ordered = list(frames)
-    if len(ordered) < 3:
-        return ordered
-    return ordered + ordered[-2:0:-1]
-
-
 def video_destination(jobs: Sequence[tuple[object, Path]], separate: bool) -> Path:
     first = jobs[0][1]
     if separate:
@@ -44,9 +35,9 @@ def require_ffmpeg() -> str:
     return ffmpeg
 
 
-def write_ping_pong_video(frames: Sequence[Path], dest: Path, fps: int, *, forward_only: bool = False) -> None:
+def write_video(frames: Sequence[Path], dest: Path, fps: int) -> None:
     ffmpeg = require_ffmpeg()
-    ordered = list(frames) if forward_only else ping_pong(frames)
+    ordered = list(frames)
     sequence = dest.with_name(f"{dest.stem}-sequence")
     sequence.mkdir(parents=True)
     try:

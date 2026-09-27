@@ -44,7 +44,6 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         show_entropy,
         separate,
         video_fps=None,
-        forward_only=False,
     ):
         calls.append(
             {
@@ -59,7 +58,6 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "show_entropy": show_entropy,
                 "separate": separate,
                 "video_fps": video_fps,
-                "forward_only": forward_only,
             }
         )
 
@@ -101,7 +99,6 @@ def test_defaults() -> None:
     assert args.steps == 25
     assert args.out is None
     assert args.video is None
-    assert args.forward_only is False
     assert not hasattr(args, "negative")
 
 
@@ -319,29 +316,17 @@ def test_video_flag_passes_fps(fake_render, tmp_path, capsys: pytest.CaptureFixt
     ]
 
 
-def test_video_defaults_to_ten_fps(fake_render) -> None:
+def test_video_defaults_to_two_fps(fake_render) -> None:
     main([str(1 << 255), "--video"])
 
-    assert fake_render[0]["video_fps"] == 10
+    assert fake_render[0]["video_fps"] == 2
 
 
 def test_video_inside_a_count_folder(fake_render, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
     main([str(1 << 255), "--count", "3", "--video"])
 
-    assert fake_render[0]["video_fps"] == 10
+    assert fake_render[0]["video_fps"] == 2
     assert capsys.readouterr().out.splitlines() == [str(tmp_path), str(tmp_path / "divination.mp4")]
-
-
-def test_forward_only_skips_the_return(fake_render) -> None:
-    main([str(1 << 255), "--video", "--forward-only"])
-
-    assert fake_render[0]["video_fps"] == 10
-    assert fake_render[0]["forward_only"] is True
-
-
-def test_forward_only_needs_video() -> None:
-    with pytest.raises(SystemExit):
-        main([str(1 << 255), "--forward-only"])
 
 
 def test_video_fps_must_be_positive() -> None:

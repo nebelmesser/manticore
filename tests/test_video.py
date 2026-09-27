@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 
 from src.cards import BORDER, TRIAD
 from src.render import denoise_passes, step_sheets
-from src.video import ping_pong, reset_directory, video_destination, write_ping_pong_video
+from src.video import reset_directory, video_destination, write_video
 
 
 def test_video_reruns_every_step_count() -> None:
@@ -16,17 +15,6 @@ def test_video_reruns_every_step_count() -> None:
     assert denoise_passes(25, video=True) == 25 * 26 // 2 - 1
     assert denoise_passes(2, video=True) == 2
     assert denoise_passes(1, video=True) == 1
-
-
-def test_ping_pong_stops_before_the_first_frame() -> None:
-    assert ping_pong([]) == []
-    assert [path.name for path in ping_pong([Path("a.png"), Path("b.png")])] == ["a.png", "b.png"]
-    assert [path.name for path in ping_pong([Path("a.png"), Path("b.png"), Path("c.png")])] == [
-        "a.png",
-        "b.png",
-        "c.png",
-        "b.png",
-    ]
 
 
 def test_reset_directory_replaces_a_file_or_folder(tmp_path) -> None:
@@ -84,7 +72,7 @@ def test_step_sheets_move_every_panel_together(tmp_path) -> None:
     assert _panel_pixel(second, 2) == (255, 255, 255)
 
 
-def test_ping_pong_video_plays_forward_and_back(tmp_path) -> None:
+def test_video_plays_forward(tmp_path) -> None:
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         pytest.skip("ffmpeg is required")
     Image = pytest.importorskip("PIL.Image")
@@ -95,7 +83,7 @@ def test_ping_pong_video_plays_forward_and_back(tmp_path) -> None:
         frames.append(path)
 
     dest = tmp_path / "reading.mp4"
-    write_ping_pong_video(frames, dest, fps=10)
+    write_video(frames, dest, fps=10)
 
     assert dest.is_file()
     assert not (tmp_path / "reading-sequence").exists()
@@ -117,4 +105,4 @@ def test_ping_pong_video_plays_forward_and_back(tmp_path) -> None:
         capture_output=True,
         text=True,
     )
-    assert counted.stdout.strip() == "4"
+    assert counted.stdout.strip() == "3"
