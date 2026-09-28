@@ -12,7 +12,8 @@ from src.video import reset_directory, video_destination, write_video
 
 def test_video_reruns_every_step_count() -> None:
     assert denoise_passes(25, video=False) == 25
-    assert denoise_passes(25, video=True) == 25 * 26 // 2 - 3
+    assert denoise_passes(25, video=True) == sum(range(4, 26))
+    assert denoise_passes(4, video=True) == 4
     assert denoise_passes(3, video=True) == 3
     assert denoise_passes(2, video=True) == 2
     assert denoise_passes(1, video=True) == 1
@@ -61,6 +62,7 @@ def test_step_sheets_move_every_panel_together(tmp_path) -> None:
         card_steps.append(paths)
 
     sheets = step_sheets(card_steps, tmp_path / "sheets", TRIAD)
+    swapped = step_sheets(card_steps, tmp_path / "swapped", TRIAD, (1, ("GHOST", "HOST", "STRANGER")))
 
     assert [path.name for path in sheets] == ["00000.png", "00001.png"]
     first = Image.open(sheets[0])
@@ -71,6 +73,8 @@ def test_step_sheets_move_every_panel_together(tmp_path) -> None:
     assert _panel_pixel(second, 0)[2] > _panel_pixel(second, 0)[0]
     assert _panel_pixel(second, 1)[0] > 200 and _panel_pixel(second, 1)[1] > 200
     assert _panel_pixel(second, 2) == (255, 255, 255)
+    assert Image.open(sheets[0]).tobytes() == Image.open(swapped[0]).tobytes()
+    assert Image.open(sheets[1]).tobytes() != Image.open(swapped[1]).tobytes()
 
 
 def test_video_plays_forward(tmp_path) -> None:

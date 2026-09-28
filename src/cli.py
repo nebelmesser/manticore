@@ -156,6 +156,7 @@ def render_cards(
     separate: bool = True,
     video_fps: int | None = None,
     captions: Sequence[str] | None = None,
+    seed: int | str | None = None,
 ) -> None:
     from src.render import render_cards as render
 
@@ -171,6 +172,7 @@ def render_cards(
         separate=separate,
         video_fps=video_fps,
         captions=captions,
+        seed=seed,
     )
 
 
@@ -203,9 +205,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
     separate = args.count is not None
     count = args.count if separate else len(TRIAD)
     try:
-        cards = cards_for(seed, count)
         negative_prompt = choose_negative()
         captions = choose_triad(seed, count) if count == len(TRIAD) else None
+        cards = cards_for(seed, count)
     except LexiconError as error:
         print(f"scry: {error}", file=sys.stderr)
         raise SystemExit(2) from error
@@ -231,6 +233,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         separate=separate,
         video_fps=args.video,
         captions=captions,
+        seed=seed,
     )
     print(output)
     if args.video is not None:

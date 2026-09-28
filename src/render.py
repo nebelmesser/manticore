@@ -211,16 +211,15 @@ def _save_card(
     return image
 
 
-VIDEO_FIRST_STEP = 3
+VIDEO_FIRST_STEP = 4
 
 
 def denoise_passes(steps: int, *, video: bool) -> int:
-    """UNet steps for one card. Video frames are full runs from step 3 through steps."""
+    """UNet steps for one card. A video reruns only the step counts it shows."""
 
     if not video or steps < VIDEO_FIRST_STEP:
         return steps
-    skipped = (VIDEO_FIRST_STEP - 1) * VIDEO_FIRST_STEP // 2
-    return steps * (steps + 1) // 2 - skipped
+    return sum(range(VIDEO_FIRST_STEP, steps + 1))
 
 
 def _show_panel(image, caption: str | None):
@@ -229,7 +228,12 @@ def _show_panel(image, caption: str | None):
     return frame_card(image, caption)
 
 
-def step_sheets(card_steps: Sequence[Sequence[Path]], dest: Path, captions: Sequence[str | None]) -> list[Path]:
+def step_sheets(
+    card_steps: Sequence[Sequence[Path]],
+    dest: Path,
+    captions: Sequence[str | None],
+    swap: tuple[int, tuple[str, str, str]] | None = None,
+) -> list[Path]:
     """Join one finished step-count of every card into one triptych frame."""
 
     from PIL import Image
@@ -242,6 +246,8 @@ def step_sheets(card_steps: Sequence[Sequence[Path]], dest: Path, captions: Sequ
         for index, steps in enumerate(card_steps):
             image = Image.open(steps[min(step, len(steps) - 1)])
             caption = captions[index] if index < len(captions) else None
+            if swap is not None and step == swap[0]:
+                caption = swap[1][index]
             panels.append(_show_panel(image, caption))
         sheet = panels[0] if len(panels) == 1 else join_cards(panels)
         path = dest / f"{step:05d}.png"
@@ -265,6 +271,7 @@ def render_cards(
     separate: bool = True,
     video_fps: int | None = None,
     captions: Sequence[str] | None = None,
+    seed: int | str | None = None,
 ) -> None:
     import torch
 
@@ -385,7 +392,17 @@ def render_cards(
             sheets_dir = video_destination(jobs, separate).with_name(
                 f"{video_destination(jobs, separate).stem}-sheets"
             )
-            sheets = step_sheets(card_steps, sheets_dir, panel_captions)
+            swap = None
+            if seed is not None and all(caption is not None for caption in panel_captions):
+                from src.cards import choose_video_caption
+
+                swap = choose_video_caption(
+                    seed,
+                    len(jobs),
+                    len(card_steps[0]),
+                    tuple(caption for caption in panel_captions if caption is not None),
+                )
+            sheets = step_sheets(card_steps, sheets_dir, panel_captions, swap)
             try:
                 write_video(
                     sheets,

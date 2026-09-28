@@ -110,17 +110,17 @@ def card_parts(seed: int | str, index: int) -> tuple[int, int]:
     return prompt_seed, sd_seed
 
 
-def triad_index(seed: int | str, card_count: int, options: int) -> int:
-    """Choose a triad with the entropy left after every card's prompt and seed.
+def entropy_index(seed: int | str, card_count: int, options: int, role: bytes) -> int:
+    """Choose an index with the entropy left after every card's prompt and seed.
 
     Real leftover bits occupy the high part of a draw at least 64 bits wide.
-    Missing bits are deterministic fill, so one seed always selects one triad.
+    Missing bits are deterministic fill for `role`, so one seed always agrees.
     """
 
     if card_count < 0:
         raise ValueError("card count cannot be negative")
     if options <= 0:
-        raise ValueError("triad options cannot be empty")
+        raise ValueError("options cannot be empty")
     if options == 1:
         return 0
     start = card_count * (PROMPT_ENTROPY_BITS + SD_SEED_BITS)
@@ -132,9 +132,15 @@ def triad_index(seed: int | str, card_count: int, options: int) -> int:
         carried,
         carried_bits,
         width,
-        generated_seed_bits(seed, 0, width - carried_bits, b"triad"),
+        generated_seed_bits(seed, 0, width - carried_bits, role),
     )
     return value % options
+
+
+def triad_index(seed: int | str, card_count: int, options: int) -> int:
+    """Choose a triad with the entropy left after every card's prompt and seed."""
+
+    return entropy_index(seed, card_count, options, b"triad")
 
 
 def to_sd_seed(seed: int | str) -> int:

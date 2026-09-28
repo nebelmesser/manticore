@@ -5,7 +5,7 @@ from typing import Sequence
 
 from src.paths import FONT_PATH, TRIADS
 from src.prompt import LexiconError
-from src.seeds import triad_index
+from src.seeds import entropy_index, triad_index
 
 
 TRIAD = ("THESIS", "ANTITHESIS", "SYNTHESIS")
@@ -37,6 +37,26 @@ def choose_triad(seed: int | str, card_count: int, path: Path = TRIADS) -> tuple
 
     triads = load_triads(path)
     return triads[triad_index(seed, card_count, len(triads))]
+
+
+def choose_video_caption(
+    seed: int | str,
+    card_count: int,
+    frame_count: int,
+    captions: Sequence[str],
+    path: Path = TRIADS,
+) -> tuple[int, tuple[str, str, str]] | None:
+    """Pick one video frame and replace every caption with another triad."""
+
+    if frame_count <= 0 or len(captions) != len(TRIAD):
+        return None
+    current = tuple(sorted(captions))
+    pool = [triad for triad in load_triads(path) if tuple(sorted(triad)) != current]
+    if not pool:
+        return None
+    frame = entropy_index(seed, card_count, frame_count, b"video-frame")
+    triad = pool[entropy_index(seed, card_count, len(pool), b"video-triad")]
+    return frame, triad
 
 
 def card_filename(index: int, count: int, captions: Sequence[str] | None = None) -> str:

@@ -46,6 +46,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         separate,
         video_fps=None,
         captions=None,
+        seed=None,
     ):
         calls.append(
             {
@@ -61,6 +62,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "separate": separate,
                 "video_fps": video_fps,
                 "captions": captions,
+                "seed": seed,
             }
         )
 
@@ -187,7 +189,8 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["entropy_bits"] == 256.0
     assert call["show_entropy"] is True
     assert call["video_fps"] is None
-    assert call["captions"] == choose_triad(1 << 255, 3)
+    captions = choose_triad(1 << 255, 3)
+    assert call["captions"] == captions
     assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
     assert captured.out.strip() == str(tmp_path / "sheet.png")
@@ -328,6 +331,7 @@ def test_video_flag_passes_fps(fake_render, tmp_path, capsys: pytest.CaptureFixt
     main([str(1 << 255), "--video", "12"])
 
     assert fake_render[0]["video_fps"] == 12
+    assert fake_render[0]["seed"] == 1 << 255
     assert capsys.readouterr().out.splitlines() == [
         str(tmp_path / "sheet.png"),
         str(tmp_path / "sheet.mp4"),

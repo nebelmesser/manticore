@@ -9,6 +9,7 @@ from src.cards import (
     TRIAD,
     card_filename,
     choose_triad,
+    choose_video_caption,
     frame_card,
     join_cards,
     load_triads,
@@ -60,6 +61,22 @@ def test_choose_triad_is_stable(tmp_path) -> None:
 
     assert chosen == choose_triad(1 << 255, 3, path)
     assert chosen in {("CAMEL", "LION", "CHILD"), ("FAITH", "DOUBT", "UNDERSTANDING")}
+
+
+def test_video_caption_replaces_the_whole_triad_on_one_frame(tmp_path) -> None:
+    path = tmp_path / "triads.txt"
+    path.write_text("Camel Lion Child\nFaith Doubt Understanding\n", encoding="utf-8")
+    captions = ("CAMEL", "LION", "CHILD")
+
+    first = choose_video_caption(1 << 255, 3, 8, captions, path)
+    again = choose_video_caption(1 << 255, 3, 8, captions, path)
+
+    assert first == again
+    assert first is not None
+    frame, triad = first
+    assert 0 <= frame < 8
+    assert triad == ("FAITH", "DOUBT", "UNDERSTANDING")
+    assert choose_video_caption(1 << 255, 3, 0, captions, path) is None
 
 
 def test_bad_triad_line_is_refused(tmp_path) -> None:
