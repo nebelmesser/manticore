@@ -24,7 +24,7 @@ Type any entropy and press Enter to start. A seed argument shorter than 256 bits
 
 The default is three cards, 512×1024, 25 steps, written as one image at `outputs/YYYY-MM-DD-HHMMSS.png`, or `outputs/<name>.png` when `--out` is set.
 
-`--video` first writes the finished triptych at `--steps`. It then renders each card again for 2 steps, then 3, and so on up to one short of `--steps`, and reuses the finished panels as the last frame. The one-step render is left out. Those finished images line up into one triptych per step count, so all three panels move together. `--video 24` sets the frame rate; the default is 2. The mp4 sits beside the png, or at `divination.mp4` inside a `--count` folder. Each card's renders stay in a `-frames` directory. This needs ffmpeg.
+`--video` first writes the finished triptych at `--steps`. It then renders each card again for 3 steps, then 4, and so on up to one short of `--steps`, and reuses the finished panels as the last frame. The one-step and two-step renders are left out. Those finished images line up into one triptych per step count, so all three panels move together. `--video 24` sets the frame rate; the default is 2. The mp4 sits beside the png, or at `divination.mp4` inside a `--count` folder. Each card's renders stay in a `-frames` directory. This needs ffmpeg.
 Generation shows the input entropy above one progress bar for all images.
 
 By default cards are saved as one composite image. Pass `--count` to save them in a folder instead: three cards become `thesis.png`, `antithesis.png`, `synthesis.png`, and `divination.png`; any other count is `card_1.png`, `card_2.png`, and so on.

@@ -12,7 +12,8 @@ from src.video import reset_directory, video_destination, write_video
 
 def test_video_reruns_every_step_count() -> None:
     assert denoise_passes(25, video=False) == 25
-    assert denoise_passes(25, video=True) == 25 * 26 // 2 - 1
+    assert denoise_passes(25, video=True) == 25 * 26 // 2 - 3
+    assert denoise_passes(3, video=True) == 3
     assert denoise_passes(2, video=True) == 2
     assert denoise_passes(1, video=True) == 1
 

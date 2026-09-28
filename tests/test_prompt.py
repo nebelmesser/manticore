@@ -21,6 +21,7 @@ from src.seeds import (
     card_parts,
     parse_seed,
     to_sd_seed,
+    triad_index,
 )
 
 
@@ -131,6 +132,26 @@ def test_surplus_flows_from_prompt_into_seed_then_onward() -> None:
     assert second_sd != poured_sd
     assert third_prompt != second_prompt
     assert generate_prompt(poured_prompt).prompt == generate_prompt(first_prompt).prompt
+
+
+def test_triad_index_is_reproducible() -> None:
+    assert triad_index("omen", 3, 19) == triad_index("omen", 3, 19)
+    assert 0 <= triad_index("omen", 3, 19) < 19
+    assert triad_index("omen", 3, 1) == 0
+
+
+def test_leftover_bits_choose_the_triad(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.seeds.generated_seed_bits", lambda *_args: 0)
+    cards = 3
+    block = cards * (PROMPT_ENTROPY_BITS + SD_SEED_BITS)
+    base = (1 << block) - 1
+    untouched = [card_parts(base, index) for index in range(cards)]
+    quiet = (base << 8) | 0
+    nudged = (base << 8) | 1
+
+    assert [card_parts(quiet, index) for index in range(cards)] == untouched
+    assert [card_parts(nudged, index) for index in range(cards)] == untouched
+    assert triad_index(quiet, cards, 19) != triad_index(nudged, cards, 19)
 
 
 def test_large_seed_is_deterministically_mapped_for_sd() -> None:

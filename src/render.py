@@ -10,7 +10,7 @@ import warnings
 from pathlib import Path
 from typing import Callable, Sequence, TextIO
 
-from src.cards import DIVINATION_NAME, TRIAD, frame_card, join_cards
+from src.cards import DIVINATION_NAME, frame_card, join_cards
 from src.entropy import format_input_entropy
 from src.model import SD21_REPO, ensure_model
 from src.paths import MODEL_DIR
@@ -190,12 +190,10 @@ def _save_card(
     width: int,
     height: int,
     negative_prompt: str,
+    caption: str | None,
 ):
-    caption = path.stem.upper()
-    if caption in TRIAD:
+    if caption is not None:
         image = frame_card(image, caption)
-    else:
-        caption = None
     _write_png(
         image,
         path,
@@ -213,24 +211,22 @@ def _save_card(
     return image
 
 
-def denoise_passes(steps: int, *, video: bool) -> int:
-    """UNet steps for one card. Video frames are full runs of 2..steps."""
+VIDEO_FIRST_STEP = 3
 
-    if not video or steps < 2:
+
+def denoise_passes(steps: int, *, video: bool) -> int:
+    """UNet steps for one card. Video frames are full runs from step 3 through steps."""
+
+    if not video or steps < VIDEO_FIRST_STEP:
         return steps
-    return steps * (steps + 1) // 2 - 1
+    skipped = (VIDEO_FIRST_STEP - 1) * VIDEO_FIRST_STEP // 2
+    return steps * (steps + 1) // 2 - skipped
 
 
 def _show_panel(image, caption: str | None):
     if caption is None:
         return image
     return frame_card(image, caption)
-
-
-def _captions(count: int) -> tuple[str | None, ...]:
-    if count == len(TRIAD):
-        return TRIAD
-    return tuple(None for _ in range(count))
 
 
 def step_sheets(card_steps: Sequence[Sequence[Path]], dest: Path, captions: Sequence[str | None]) -> list[Path]:
@@ -268,6 +264,7 @@ def render_cards(
     show_entropy: bool = True,
     separate: bool = True,
     video_fps: int | None = None,
+    captions: Sequence[str] | None = None,
 ) -> None:
     import torch
 
@@ -295,7 +292,9 @@ def render_cards(
         saved = []
         records = []
         card_steps: list[list[Path]] = []
-        captions = _captions(len(jobs))
+        panel_captions: Sequence[str | None] = tuple(None for _ in jobs)
+        if captions is not None and len(captions) == len(jobs):
+            panel_captions = tuple(captions)
         progress_done = 0
 
         def generate(card: GeneratedPrompt, step_count: int):
@@ -327,15 +326,17 @@ def render_cards(
         for image_index, (card, _path) in enumerate(jobs):
             image = generate(card, steps)
             raw_images.append(image)
-            if frames_dir is not None and steps >= 2:
-                panel_name = captions[image_index].lower() if captions[image_index] else f"{image_index:02d}"
+            if frames_dir is not None and steps >= VIDEO_FIRST_STEP:
+                caption = panel_captions[image_index]
+                panel_name = caption.lower() if caption else f"{image_index:02d}"
                 panel_dir = frames_dir / panel_name
                 panel_dir.mkdir()
-                frame_path = panel_dir / f"{steps - 2:05d}.png"
+                frame_path = panel_dir / f"{steps - VIDEO_FIRST_STEP:05d}.png"
                 image.convert("RGB").save(frame_path)
                 full_frames.append(frame_path)
         for image_index, (card, path) in enumerate(jobs):
             image = raw_images[image_index]
+            caption = panel_captions[image_index]
             if separate:
                 image = _save_card(
                     image,
@@ -347,9 +348,9 @@ def render_cards(
                     width=width,
                     height=height,
                     negative_prompt=negative_prompt,
+                    caption=caption,
                 )
-            elif len(jobs) == len(TRIAD):
-                caption = TRIAD[image_index]
+            elif caption is not None:
                 image = frame_card(image, caption)
                 records.append(
                     _card_record(
@@ -364,7 +365,7 @@ def render_cards(
                     )
                 )
             saved.append(image)
-        if separate and len(saved) == len(TRIAD):
+        if separate and any(caption is not None for caption in panel_captions):
             join_cards(saved).save(jobs[0][1].parent / DIVINATION_NAME)
         elif not separate:
             _write_png(join_cards(saved), jobs[0][1], {"cards": records})
@@ -372,7 +373,7 @@ def render_cards(
             for image_index, (card, _path) in enumerate(jobs):
                 panel_dir = full_frames[image_index].parent
                 card_frames = []
-                for index, step_count in enumerate(range(2, steps)):
+                for index, step_count in enumerate(range(VIDEO_FIRST_STEP, steps)):
                     preview = generate(card, step_count)
                     frame_path = panel_dir / f"{index:05d}.png"
                     preview.convert("RGB").save(frame_path)
@@ -384,7 +385,7 @@ def render_cards(
             sheets_dir = video_destination(jobs, separate).with_name(
                 f"{video_destination(jobs, separate).stem}-sheets"
             )
-            sheets = step_sheets(card_steps, sheets_dir, captions)
+            sheets = step_sheets(card_steps, sheets_dir, panel_captions)
             try:
                 write_video(
                     sheets,

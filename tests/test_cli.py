@@ -6,6 +6,7 @@ from datetime import datetime
 
 import pytest
 
+from src.cards import choose_triad
 from src.cli import build_parser, main, reserve_output_dir, reserve_output_file
 from src.entropy import MIN_ENTROPY_BITS
 from src.model import REQUIRED_FILES, model_is_ready
@@ -44,6 +45,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
         show_entropy,
         separate,
         video_fps=None,
+        captions=None,
     ):
         calls.append(
             {
@@ -58,6 +60,7 @@ def fake_render(monkeypatch: pytest.MonkeyPatch, tmp_path):
                 "show_entropy": show_entropy,
                 "separate": separate,
                 "video_fps": video_fps,
+                "captions": captions,
             }
         )
 
@@ -184,6 +187,7 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["entropy_bits"] == 256.0
     assert call["show_entropy"] is True
     assert call["video_fps"] is None
+    assert call["captions"] == choose_triad(1 << 255, 3)
     assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
     assert captured.out.strip() == str(tmp_path / "sheet.png")
@@ -209,6 +213,7 @@ def test_flags_override_defaults(fake_render) -> None:
 
     call = fake_render[0]
     assert call["separate"] is True
+    assert call["captions"] is None
     assert [path.name for path in call["paths"]] == ["card_1.png"]
     assert call["width"] == 768
     assert call["height"] == 768
@@ -284,8 +289,10 @@ def test_explicit_count_keeps_separate_cards(fake_render, tmp_path, capsys: pyte
     main([str(1 << 255), "--count", "3", "--out", "reading"])
 
     call = fake_render[0]
+    captions = choose_triad(1 << 255, 3)
     assert call["separate"] is True
-    assert [path.name for path in call["paths"]] == ["thesis.png", "antithesis.png", "synthesis.png"]
+    assert call["captions"] == captions
+    assert [path.name for path in call["paths"]] == [f"{caption.lower()}.png" for caption in captions]
     assert fake_render.out == "reading"
     assert capsys.readouterr().out.strip() == str(tmp_path)
 
@@ -304,6 +311,17 @@ def test_output_file_name(tmp_path) -> None:
     assert named.name == "reading.png"
     assert again.name == "reading-2.png"
     assert first.is_file()
+
+
+def test_video_keeps_the_still_captions(fake_render) -> None:
+    seed = str(1 << 255)
+    main([seed])
+    main([seed, "--video"])
+    main([seed, "--count", "3"])
+    main([seed, "--count", "3", "--video"])
+
+    captions = choose_triad(1 << 255, 3)
+    assert [call["captions"] for call in fake_render] == [captions, captions, captions, captions]
 
 
 def test_video_flag_passes_fps(fake_render, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:

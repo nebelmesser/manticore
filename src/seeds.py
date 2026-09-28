@@ -110,6 +110,33 @@ def card_parts(seed: int | str, index: int) -> tuple[int, int]:
     return prompt_seed, sd_seed
 
 
+def triad_index(seed: int | str, card_count: int, options: int) -> int:
+    """Choose a triad with the entropy left after every card's prompt and seed.
+
+    Real leftover bits occupy the high part of a draw at least 64 bits wide.
+    Missing bits are deterministic fill, so one seed always selects one triad.
+    """
+
+    if card_count < 0:
+        raise ValueError("card count cannot be negative")
+    if options <= 0:
+        raise ValueError("triad options cannot be empty")
+    if options == 1:
+        return 0
+    start = card_count * (PROMPT_ENTROPY_BITS + SD_SEED_BITS)
+    _material, total_bits = seed_entropy_material(seed)
+    remaining = max(0, total_bits - start)
+    width = max(remaining, SD_SEED_BITS)
+    carried, carried_bits = take_bits(seed, start, width)
+    value = _place_high(
+        carried,
+        carried_bits,
+        width,
+        generated_seed_bits(seed, 0, width - carried_bits, b"triad"),
+    )
+    return value % options
+
+
 def to_sd_seed(seed: int | str) -> int:
     """Map an integer or text seed into the range accepted by PyTorch."""
 

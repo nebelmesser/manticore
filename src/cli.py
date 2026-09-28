@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence, TextIO
 
-from src.cards import TRIAD, card_filename
+from src.cards import TRIAD, card_filename, choose_triad
 from src.entropy import (
     NotEnoughEntropy,
     enter_entropy_tty,
@@ -155,6 +155,7 @@ def render_cards(
     show_entropy: bool = True,
     separate: bool = True,
     video_fps: int | None = None,
+    captions: Sequence[str] | None = None,
 ) -> None:
     from src.render import render_cards as render
 
@@ -169,6 +170,7 @@ def render_cards(
         show_entropy=show_entropy,
         separate=separate,
         video_fps=video_fps,
+        captions=captions,
     )
 
 
@@ -203,6 +205,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
     try:
         cards = cards_for(seed, count)
         negative_prompt = choose_negative()
+        captions = choose_triad(seed, count) if count == len(TRIAD) else None
     except LexiconError as error:
         print(f"scry: {error}", file=sys.stderr)
         raise SystemExit(2) from error
@@ -210,7 +213,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
     if separate:
         output = reserve_output_dir(name=args.out)
         jobs = [
-            (card, output / card_filename(index, count))
+            (card, output / card_filename(index, count, captions))
             for index, card in enumerate(cards, start=1)
         ]
     else:
@@ -227,6 +230,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         show_entropy=not interactive,
         separate=separate,
         video_fps=args.video,
+        captions=captions,
     )
     print(output)
     if args.video is not None:

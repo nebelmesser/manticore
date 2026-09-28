@@ -2,15 +2,80 @@ from __future__ import annotations
 
 import pytest
 
-from src.cards import BORDER, BOTTOM_BORDER, CORNER_RADIUS, TRIAD, card_filename, frame_card, join_cards
+from src.cards import (
+    BORDER,
+    BOTTOM_BORDER,
+    CORNER_RADIUS,
+    TRIAD,
+    card_filename,
+    choose_triad,
+    frame_card,
+    join_cards,
+    load_triads,
+)
+from src.prompt import LexiconError
 
 
 def test_three_cards_use_triad_names() -> None:
-    assert [card_filename(index, 3) for index in (1, 2, 3)] == [
+    assert [card_filename(index, 3, TRIAD) for index in (1, 2, 3)] == [
         "thesis.png",
         "antithesis.png",
         "synthesis.png",
     ]
+
+
+def test_chosen_triad_names_the_files() -> None:
+    captions = ("CAMEL", "LION", "CHILD")
+    assert [card_filename(index, 3, captions) for index in (1, 2, 3)] == [
+        "camel.png",
+        "lion.png",
+        "child.png",
+    ]
+
+
+def test_triad_captions_are_uppercase(tmp_path) -> None:
+    path = tmp_path / "triads.txt"
+    path.write_text("Camel Lion Child\n\nBirth Death Transformation\n", encoding="utf-8")
+
+    assert load_triads(path) == (
+        ("CAMEL", "LION", "CHILD"),
+        ("BIRTH", "DEATH", "TRANSFORMATION"),
+    )
+
+
+def test_shipped_triads_are_three_uppercase_words() -> None:
+    triads = load_triads()
+
+    assert len(triads) > 1
+    assert triads[0] == TRIAD
+    assert all(len(triad) == len(TRIAD) for triad in triads)
+    assert all(word == word.upper() for triad in triads for word in triad)
+
+
+def test_choose_triad_is_stable(tmp_path) -> None:
+    path = tmp_path / "triads.txt"
+    path.write_text("Camel Lion Child\nFaith Doubt Understanding\n", encoding="utf-8")
+
+    chosen = choose_triad(1 << 255, 3, path)
+
+    assert chosen == choose_triad(1 << 255, 3, path)
+    assert chosen in {("CAMEL", "LION", "CHILD"), ("FAITH", "DOUBT", "UNDERSTANDING")}
+
+
+def test_bad_triad_line_is_refused(tmp_path) -> None:
+    path = tmp_path / "triads.txt"
+    path.write_text("Only Two\n", encoding="utf-8")
+
+    with pytest.raises(LexiconError):
+        load_triads(path)
+
+
+def test_empty_triads_are_refused(tmp_path) -> None:
+    path = tmp_path / "triads.txt"
+    path.write_text("\n\n", encoding="utf-8")
+
+    with pytest.raises(LexiconError):
+        load_triads(path)
 
 
 def test_other_counts_stay_numbered() -> None:

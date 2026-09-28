@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from src.paths import FONT_PATH
+from pathlib import Path
+from typing import Sequence
+
+from src.paths import FONT_PATH, TRIADS
+from src.prompt import LexiconError
+from src.seeds import triad_index
 
 
 TRIAD = ("THESIS", "ANTITHESIS", "SYNTHESIS")
@@ -11,9 +16,32 @@ CAPTION_SIZE = 28
 CORNER_RADIUS = 5
 
 
-def card_filename(index: int, count: int) -> str:
-    if count == len(TRIAD):
-        return f"{TRIAD[index - 1].lower()}.png"
+def load_triads(path: Path = TRIADS) -> tuple[tuple[str, str, str], ...]:
+    if not path.is_file():
+        raise LexiconError(f"Triad corpus not found: {path}")
+    rows = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        words = raw.split()
+        if not words:
+            continue
+        if len(words) != len(TRIAD):
+            raise LexiconError(f"Expected {len(TRIAD)} words in each triad: {path}")
+        rows.append(tuple(word.upper() for word in words))
+    if not rows:
+        raise LexiconError(f"Triad corpus is empty: {path}")
+    return tuple(rows)
+
+
+def choose_triad(seed: int | str, card_count: int, path: Path = TRIADS) -> tuple[str, str, str]:
+    """Pick one caption triad. The same seed and card count always agree."""
+
+    triads = load_triads(path)
+    return triads[triad_index(seed, card_count, len(triads))]
+
+
+def card_filename(index: int, count: int, captions: Sequence[str] | None = None) -> str:
+    if captions is not None and len(captions) == count:
+        return f"{captions[index - 1].lower()}.png"
     return f"card_{index}.png"
 
 
