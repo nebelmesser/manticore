@@ -103,7 +103,7 @@ def test_defaults() -> None:
     assert args.height == 1024
     assert args.steps == 25
     assert args.out is None
-    assert args.video is None
+    assert args.video == 2
     assert not hasattr(args, "negative")
 
 
@@ -188,12 +188,12 @@ def test_run_uses_defaults_and_card_names(fake_render, tmp_path, capsys: pytest.
     assert call["negative_prompt"] == "text letters label title panels comics captions subtitle"
     assert call["entropy_bits"] == 256.0
     assert call["show_entropy"] is True
-    assert call["video_fps"] is None
+    assert call["video_fps"] == 2
     captions = choose_triad(1 << 255, 3)
     assert call["captions"] == captions
     assert len(set(call["seeds"])) == 3
     captured = capsys.readouterr()
-    assert captured.out.strip() == str(tmp_path / "sheet.png")
+    assert captured.out.splitlines() == [str(tmp_path / "sheet.png"), str(tmp_path / "sheet.mp4")]
     assert captured.err == ""
 
 
@@ -297,7 +297,7 @@ def test_explicit_count_keeps_separate_cards(fake_render, tmp_path, capsys: pyte
     assert call["captions"] == captions
     assert [path.name for path in call["paths"]] == [f"{caption.lower()}.png" for caption in captions]
     assert fake_render.out == "reading"
-    assert capsys.readouterr().out.strip() == str(tmp_path)
+    assert capsys.readouterr().out.splitlines() == [str(tmp_path), str(tmp_path / "divination.mp4")]
 
 
 def test_output_file_name(tmp_path) -> None:
@@ -318,9 +318,9 @@ def test_output_file_name(tmp_path) -> None:
 
 def test_video_keeps_the_still_captions(fake_render) -> None:
     seed = str(1 << 255)
-    main([seed])
+    main([seed, "--image"])
     main([seed, "--video"])
-    main([seed, "--count", "3"])
+    main([seed, "--count", "3", "--image"])
     main([seed, "--count", "3", "--video"])
 
     captions = choose_triad(1 << 255, 3)
@@ -342,6 +342,12 @@ def test_video_defaults_to_two_fps(fake_render) -> None:
     main([str(1 << 255), "--video"])
 
     assert fake_render[0]["video_fps"] == 2
+
+
+def test_video_can_be_disabled(fake_render, tmp_path, capsys) -> None:
+    main([str(1 << 255), "--image"])
+    assert fake_render[0]["video_fps"] is None
+    assert capsys.readouterr().out.splitlines() == [str(tmp_path / "sheet.png")]
 
 
 def test_video_inside_a_count_folder(fake_render, tmp_path, capsys: pytest.CaptureFixture[str]) -> None:

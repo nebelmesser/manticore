@@ -74,9 +74,36 @@ def test_video_caption_replaces_the_whole_triad_on_one_frame(tmp_path) -> None:
     assert first == again
     assert first is not None
     frame, triad = first
-    assert 0 <= frame < 8
+    assert 0 < frame < 7
     assert triad == ("FAITH", "DOUBT", "UNDERSTANDING")
     assert choose_video_caption(1 << 255, 3, 0, captions, path) is None
+
+
+@pytest.mark.parametrize("frame_count", [0, 1, 2])
+def test_short_video_has_no_caption_swap(frame_count) -> None:
+    assert choose_video_caption(1 << 255, 3, frame_count, TRIAD) is None
+
+
+@pytest.mark.parametrize("frame_count", [3, 4, 22, 100])
+@pytest.mark.parametrize("draw", [0, (1 << 51), (1 << 52) - 1])
+def test_caption_swap_excludes_endpoints(frame_count, draw, monkeypatch) -> None:
+    monkeypatch.setattr("src.cards.entropy_index", lambda seed, count, options, role: draw % options)
+    swap = choose_video_caption(1 << 255, 3, frame_count, TRIAD)
+    assert swap is not None
+    assert 1 <= swap[0] <= frame_count - 2
+
+
+def test_caption_swap_positions_follow_a_normal_distribution(tmp_path) -> None:
+    from statistics import mean, pstdev
+
+    path = tmp_path / "triads.txt"
+    path.write_text("Camel Lion Child\n", encoding="utf-8")
+    positions = [choose_video_caption(seed, 3, 102, TRIAD, path)[0] for seed in range(4000)]
+    assert min(positions) >= 1
+    assert max(positions) <= 100
+    assert abs(mean(positions) - 50.5) < 1
+    assert 15 < pstdev(positions) < 18
+    assert 0.65 < sum(abs(frame - 50.5) <= 100 / 6 for frame in positions) / len(positions) < 0.72
 
 
 def test_bad_triad_line_is_refused(tmp_path) -> None:

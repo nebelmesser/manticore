@@ -52,13 +52,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--width", type=int, default=512, help="width, a multiple of 8")
     parser.add_argument("--height", type=int, default=1024, help="height, a multiple of 8")
     parser.add_argument("--steps", type=int, default=25, help="denoising steps")
-    parser.add_argument(
+    video = parser.add_mutually_exclusive_group()
+    video.add_argument(
         "--video",
         nargs="?",
         const=2,
+        default=2,
         type=int,
         metavar="FPS",
-        help="write an mp4 of every triptych step; optional FPS, default 2",
+        help="write an mp4 of every triptych step (enabled by default); optional FPS, default 2",
+    )
+    video.add_argument(
+        "--image",
+        dest="video",
+        action="store_const",
+        const=None,
+        help="write only the finished image(s)",
     )
     parser.add_argument(
         "--out",

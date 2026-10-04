@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from statistics import NormalDist
 from typing import Sequence
 
 from src.paths import FONT_PATH, TRIADS
@@ -48,13 +49,20 @@ def choose_video_caption(
 ) -> tuple[int, tuple[str, str, str]] | None:
     """Pick one video frame and replace every caption with another triad."""
 
-    if frame_count <= 0 or len(captions) != len(TRIAD):
+    if frame_count < 3 or len(captions) != len(TRIAD):
         return None
     current = tuple(sorted(captions))
     pool = [triad for triad in load_triads(path) if tuple(sorted(triad)) != current]
     if not pool:
         return None
-    frame = entropy_index(seed, card_count, frame_count, b"video-frame")
+    # Round a normal draw truncated to interior frame bins. Three standard
+    # deviations cover each half of that interval; endpoints are never sampled.
+    normal = NormalDist(mu=(frame_count - 1) / 2, sigma=(frame_count - 2) / 6)
+    low = normal.cdf(0.5)
+    high = normal.cdf(frame_count - 1.5)
+    options = 1 << 52
+    quantile = (entropy_index(seed, card_count, options, b"video-frame") + 0.5) / options
+    frame = int(normal.inv_cdf(low + quantile * (high - low)) + 0.5)
     triad = pool[entropy_index(seed, card_count, len(pool), b"video-triad")]
     return frame, triad
 
