@@ -13,6 +13,7 @@ Technomancy is divination using algorithms, random number generators, neural net
 I appreciate this particular shift: whereas randomness used to be drawn from cards, dice, or coins, one can now take entropy and run it through an old generative model.
 SD 2.1 excels thanks to its "imperfections": its flawed understanding of the world leads it to consistently produce strange, symbolic constructs that invite interpretation.
 
+[Learn more in my article](https://nebelmesser.com/articles/technomancy.en)
 
 ```bash
 ./scry
